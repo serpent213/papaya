@@ -166,6 +166,19 @@ class TrainedIdRegistry:
         with self._lock:
             return len(self._seen)
 
+    def snapshot(self) -> dict[str, str | None]:
+        """Return a shallow copy of the tracked message IDs."""
+
+        with self._lock:
+            return dict(self._seen)
+
+    def reset(self) -> None:
+        """Clear all tracked IDs and delete the backing file."""
+
+        with self._lock:
+            self._seen.clear()
+            self._path.unlink(missing_ok=True)
+
     def _append_record(self, message_id: str, category: str | None) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         record = message_id if category is None else f"{message_id}\t{category}"
