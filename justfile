@@ -22,10 +22,9 @@ typecheck:
 test kind="all":
     @case "{{kind}}" in \
         all) uv run pytest ;; \
-        unit) uv run pytest -m "not integration" ;; \
-        integration) uv run pytest -m integration ;; \
-        slow) uv run pytest -m slow ;; \
-        *) echo "Unknown test kind '{{kind}}'. Use all|unit|integration|slow." >&2; exit 1 ;; \
+        unit) uv run pytest tests/unit ;; \
+        integration) uv run pytest tests/integration ;; \
+        *) echo "Unknown test kind '{{kind}}'. Use all|unit|integration." >&2; exit 1 ;; \
     esac
 
 # Run all checks (format, lint, typing, tests)

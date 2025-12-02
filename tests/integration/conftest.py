@@ -76,17 +76,3 @@ def corpus_dir() -> Path:
     if not root.exists():
         pytest.skip("Corpus fixtures missing")
     return root
-
-
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Automatically mark tests in this package as integration."""
-
-    package_root = Path(__file__).resolve().parent
-    integration_mark = pytest.mark.integration
-    for item in items:
-        try:
-            path = Path(item.fspath).resolve()
-        except OSError:
-            continue
-        if package_root in path.parents:
-            item.add_marker(integration_mark)

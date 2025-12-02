@@ -179,13 +179,10 @@ def assert_accuracy_above(results: list[tuple[str, str]], threshold: float = 0.7
     assert accuracy >= threshold, f"Accuracy {accuracy:.1%} below {threshold:.1%}"
 ```
 
-### Pytest Markers
+### Pytest Conventions
 
-```python
-# In conftest.py or pyproject.toml
-pytest.mark.integration  # Skip in unit test runs
-pytest.mark.slow         # Optional marker for CI filtering
-```
+- Keep integration suites under `tests/integration/` and let tooling target that folder directly.
+- Use `@pytest.mark.timeout(...)` for any watcher-driven flow that could hang.
 
 ---
 

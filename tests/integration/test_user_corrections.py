@@ -31,8 +31,6 @@ from tests.integration.conftest import (
     load_corpus,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.slow]
-
 CLASSIFY_RULES = """
 features = modules.extract_features.classify(message)
 bayes = modules.naive_bayes.classify(message, features, account)
