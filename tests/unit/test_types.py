@@ -39,7 +39,6 @@ def test_maildir_account_path_expansion() -> None:
 def test_category_config_structure() -> None:
     cfg = papaya_types.CategoryConfig(
         name="Spam",
-        min_confidence=0.9,
         flag=papaya_types.FolderFlag.SPAM,
     )
     assert cfg.flag is papaya_types.FolderFlag.SPAM

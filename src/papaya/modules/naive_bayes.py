@@ -14,13 +14,15 @@ if TYPE_CHECKING:
 
 _MODELS: dict[str, NaiveBayesClassifier] = {}
 _STORE: Store | None = None
+_FRESH_MODELS: bool = False
 
 
 def startup(ctx: ModuleContext) -> None:
     """Initialise per-account models from persisted state."""
 
-    global _STORE
+    global _STORE, _FRESH_MODELS
     _STORE = ctx.store
+    _FRESH_MODELS = ctx.fresh_models
     _MODELS.clear()
     for account in ctx.config.maildirs:
         _MODELS[account.name] = _load_for_account(account.name)
@@ -72,7 +74,7 @@ def _get_model(account: str | None) -> NaiveBayesClassifier:
 
 def _load_for_account(account: str) -> NaiveBayesClassifier:
     model = NaiveBayesClassifier()
-    if _STORE is not None:
+    if _STORE is not None and not _FRESH_MODELS:
         _STORE.load_classifier(model, account=account)
     return model
 

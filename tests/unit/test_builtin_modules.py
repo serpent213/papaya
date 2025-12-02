@@ -21,8 +21,7 @@ def _build_context(tmp_path: Path) -> ModuleContext:
     config = Config(
         root_dir=tmp_path / "state",
         maildirs=[maildir],
-        categories={"Spam": CategoryConfig(name="Spam", min_confidence=0.5, flag=FolderFlag.SPAM)},
-        classifiers=[],
+        categories={"Spam": CategoryConfig(name="Spam", flag=FolderFlag.SPAM)},
         logging=LoggingConfig(),
         module_paths=[],
         rules="pass",

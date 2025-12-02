@@ -10,7 +10,7 @@ A Python daemon that monitors maildir folders, classifies incoming email using p
 
 1. **Keep inbox clean** — Move spam and newsletters out, leave important mail in inbox
 2. **Learn continuously** — Model improves as user sorts mail into folders
-3. **Support experimentation** — Run multiple classifiers in parallel, compare performance
+3. **Support experimentation** — Mix and match modules + rule snippets per account
 4. **Multi-account** — Watch multiple maildirs with per-account and global training
 
 ---
@@ -123,7 +123,7 @@ Persists to `~/.local/lib/papaya/`:
 **Event-driven training** via filesystem watcher (not polling):
 - Watches all category folders for new arrivals (user sorting mail)
 - When mail appears in category folder → train immediately (no delay)
-- **Scope**: Trains all registered classifiers (active + shadow), both per-account and global
+- **Scope**: Executes `train_rules` for each configured account (modules persist themselves)
 - **Deduplication**: Tracks already-trained message IDs to avoid retraining
 
 **Misclassification correction**: If mail moves OUT of a category folder (user correcting mistake), the new location is the "truth" — retrain with corrected label.
@@ -184,6 +184,10 @@ On classification:
 # Optionally override default of ~/.local/lib/papaya/
 # rootdir: /var/lib/papaya
 
+# Module search paths (built-ins always loaded first)
+module_paths:
+  - ~/.config/papaya/modules
+
 # Maildir accounts to monitor
 maildirs:
   - name: self
@@ -191,26 +195,29 @@ maildirs:
   - name: siggi
     path: /var/vmail/reactor.de/siggi
 
-# Categories with per-category confidence thresholds and flags
+# Global rules (per-account overrides live inline with maildir entries)
+rules: |
+  features = modules.extract_features.classify(message)
+  bayes = modules.naive_bayes.classify(message, features, account)
+
+  if bayes.scores.get("Spam", 0) > 0.85:
+      move_to("Spam", confidence=bayes.scores["Spam"])
+  if features.has_list_unsubscribe:
+      move_to("Newsletters", confidence=0.75)
+
+train_rules: |
+  features = modules.extract_features.classify(message)
+  modules.naive_bayes.train(message, features, category, account)
+  modules.tfidf_sgd.train(message, features, category, account)
+
+# Categories with behaviour flags
 categories:
   Spam:
-    min_confidence: 0.85    # Higher threshold - false positives costly
     flag: spam              # Blacklist senders
   Newsletters:
-    min_confidence: 0.70    # Can be more aggressive
-    # flag: neutral           # ML only
+    flag: neutral           # ML only
   Important:
-    min_confidence: 0.80
     flag: ham               # Whitelist senders
-
-# Classifier configuration
-classifiers:
-  - name: naive_bayes
-    type: naive_bayes
-    mode: active        # active | shadow
-  - name: tfidf_sgd
-    type: tfidf_sgd
-    mode: shadow
 ```
 
 ---
@@ -223,18 +230,11 @@ papaya daemon -d       # Daemonise
 
 papaya status          # Show daemon status, watched maildirs, model stats
 
-papaya classify <file> # Classify a single .eml file
-                       # Shows predictions from ALL classifiers:
-                       #   naive_bayes [A]: Spam (0.92)
-                       #   tfidf_sgd   [S]: Spam (0.87)
-                       #   ─────────────────────────
-                       #   Consensus: Spam
+papaya classify <file> # Execute the configured rules for a single .eml file
 
 papaya train           # Trigger manual training run
 papaya train --full    # Full retrain (not incremental)
 
-papaya compare         # Show accuracy comparison between classifiers
-                       # Uses shadow predictions vs actual user sorting
 ```
 
 ---
@@ -249,10 +249,9 @@ papaya compare         # Show accuracy comparison between classifiers
 4. Check whitelist → move to ham-flagged folder (skip ML)
 5. Extract features (text + structural + domain mismatch)
    - If unparseable → treat as spam (high confidence)
-6. All classifiers predict (active + shadow)
-7. Log predictions (debug log includes full feature vector)
-8. Active classifier result → move if confidence > category threshold
-9. Mail moves to cur/ (inbox) or .{Category}/cur/ (sorted)
+6. Execute rule engine → rules call modules.* classify helpers
+7. Rule decision determines category/inbox move
+8. Mail moves to cur/ (inbox) or .{Category}/cur/ (sorted); Papaya flag added if daemon moved it
 ```
 
 ### User Sorts Mail (Training Trigger)
@@ -260,7 +259,7 @@ papaya compare         # Show accuracy comparison between classifiers
 1. Watcher detects new file in category folder (user moved it)
 2. If folder has ham/spam flag → update whitelist/blacklist with From address
 3. Extract features
-4. Train all classifiers immediately (per-account + global)
+4. Execute `train_rules` immediately (per-account + global)
 5. Mark message ID as trained
 6. If mail was MOVED from another category (correction):
    a. Retrain with new label
@@ -273,7 +272,7 @@ papaya compare         # Show accuracy comparison between classifiers
 
 **Log files** (in `~/.local/lib/papaya/logs/`):
 - `papaya.log` — Main application log (INFO level): daemon start/stop, mail processed, moves, training events, errors
-- `debug.log` — Optional debug log (DEBUG level): full classifier input features, prediction scores from all classifiers, model updates
+- `debug.log` — Optional debug log (DEBUG level): feature snapshots, module outputs, and rule decisions
 
 **Configuration:**
 ```yaml

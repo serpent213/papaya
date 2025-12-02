@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from papaya.config import ConfigError, load_config
-from papaya.types import ClassifierMode, FolderFlag
+from papaya.types import FolderFlag
 
 
 def _write_config(tmp_path: Path, content: str) -> Path:
@@ -37,12 +37,7 @@ def test_load_config_success(tmp_path: Path) -> None:
               pass
         categories:
           Spam:
-            min_confidence: 0.9
             flag: spam
-        classifiers:
-          - name: nb
-            type: naive_bayes
-            mode: active
         logging:
           level: debug
           debug_file: true
@@ -58,7 +53,6 @@ def test_load_config_success(tmp_path: Path) -> None:
     assert "skip()" in config.rules
     assert "pass" in config.train_rules
     assert config.categories["Spam"].flag is FolderFlag.SPAM
-    assert config.classifiers[0].mode is ClassifierMode.ACTIVE
     assert config.logging.debug_file is True
 
 
@@ -75,12 +69,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
             path: ~/Maildir
         categories:
           Spam:
-            min_confidence: 0.8
             flag: spam
-        classifiers:
-          - name: nb
-            type: naive_bayes
-            mode: active
         """,
     )
 
@@ -101,11 +90,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
             maildirs: []
             categories:
               Spam:
-                min_confidence: 0.9
-            classifiers:
-              - name: nb
-                type: naive_bayes
-                mode: active
+                flag: spam
             """,
             "At least one maildir must be configured",
         ),
@@ -120,31 +105,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
                 path: ~/Maildir
             categories:
               Spam:
-                min_confidence: 1.2
-            classifiers:
-              - name: nb
-                type: naive_bayes
-                mode: active
-            """,
-            "between 0 and 1",
-        ),
-        (
-            """
-            rules: |
-              pass
-            train_rules: |
-              pass
-            maildirs:
-              - name: inbox
-                path: ~/Maildir
-            categories:
-              Spam:
-                min_confidence: 0.8
                 flag: nope
-            classifiers:
-              - name: nb
-                type: naive_bayes
-                mode: active
             """,
             "Unknown folder flag",
         ),
@@ -157,12 +118,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
                 path: ~/Maildir
             categories:
               Spam:
-                min_confidence: 0.8
                 flag: spam
-            classifiers:
-              - name: nb
-                type: naive_bayes
-                mode: active
             """,
             "rules must be provided",
         ),
@@ -176,12 +132,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
                 path: ~/Maildir
             categories:
               Spam:
-                min_confidence: 0.8
                 flag: spam
-            classifiers:
-              - name: nb
-                type: naive_bayes
-                mode: active
             """,
             "rules cannot be empty",
         ),
@@ -197,14 +148,21 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
                 rules: 123
             categories:
               Spam:
-                min_confidence: 0.8
                 flag: spam
-            classifiers:
-              - name: nb
-                type: naive_bayes
-                mode: active
             """,
             "maildirs[1].rules must be a string",
+        ),
+        (
+            """
+            rules: |
+              pass
+            train_rules: |
+              pass
+            categories:
+              Spam:
+                flag: spam
+            """,
+            "At least one maildir must be configured",
         ),
     ],
 )

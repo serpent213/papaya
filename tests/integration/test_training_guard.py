@@ -3,24 +3,36 @@ from __future__ import annotations
 from pathlib import Path
 
 from papaya.maildir import category_subdir, ensure_maildir_structure
-from papaya.pipeline import PipelineMetrics, PipelineResult
 from papaya.runtime import AccountRuntime
 from papaya.trainer import TrainingResult
+from papaya.types import CategoryConfig, FolderFlag
 
 
-class StubPipeline:
-    def __init__(self) -> None:
-        self.metrics = PipelineMetrics()
-        self.result = PipelineResult(
-            action="inbox",
-            category=None,
-            destination=None,
-            decision=None,
-            message_id=None,
-        )
+class NoopRuleEngine:
+    def execute_classify(self, *_args, **_kwargs):  # pragma: no cover - unused
+        return type("Decision", (), {"action": "inbox", "category": None, "confidence": None})()
 
-    def process_new_mail(self, _path: Path) -> PipelineResult:  # pragma: no cover - unused
-        return self.result
+    def execute_train(self, *_args, **_kwargs) -> None:  # pragma: no cover - unused
+        return None
+
+
+class NoopSenders:
+    def is_blacklisted(self, *_args, **_kwargs) -> bool:
+        return False
+
+    def is_whitelisted(self, *_args, **_kwargs) -> bool:
+        return False
+
+    def apply_flag(self, *_args, **_kwargs) -> None:  # pragma: no cover - unused
+        return None
+
+
+class NoopMover:
+    def move_to_category(self, path: Path, *_args, **_kwargs) -> Path:
+        return path
+
+    def move_to_inbox(self, path: Path, *_args, **_kwargs) -> Path:
+        return path
 
 
 class RecordingTrainer:
@@ -79,15 +91,21 @@ def _write_message(path: Path, *, message_id: str) -> None:
 def _build_runtime(
     maildir: Path, *, papaya_flag: str
 ) -> tuple[AccountRuntime, RecordingTrainer, CapturingWatcher]:
-    pipeline = StubPipeline()
     trainer = RecordingTrainer()
     watcher = CapturingWatcher()
+    categories = {
+        "Spam": CategoryConfig(name="Spam", flag=FolderFlag.SPAM),
+        "Inbox": CategoryConfig(name="Inbox", flag=FolderFlag.NEUTRAL),
+    }
     runtime = AccountRuntime(
         name="personal",
         maildir=maildir,
-        pipeline=pipeline,
+        rule_engine=NoopRuleEngine(),
+        senders=NoopSenders(),
+        mover=NoopMover(),
         trainer=trainer,
         watcher=watcher,
+        categories=categories,
         papaya_flag=papaya_flag,
     )
     return runtime, trainer, watcher

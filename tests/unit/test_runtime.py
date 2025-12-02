@@ -2,24 +2,37 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from papaya.pipeline import PipelineMetrics, PipelineResult
 from papaya.runtime import AccountRuntime, DaemonRuntime
 from papaya.trainer import TrainingResult
+from papaya.types import CategoryConfig, FolderFlag
 
 
-class StubPipeline:
+class StubRuleEngine:
     def __init__(self) -> None:
-        self.metrics = PipelineMetrics()
-        self.result = PipelineResult(
-            action="inbox",
-            category=None,
-            destination=None,
-            decision=None,
-            message_id=None,
-        )
+        self.classify_calls: list[tuple[str, object]] = []
 
-    def process_new_mail(self, _path: Path) -> PipelineResult:
-        return self.result
+    def execute_classify(self, account: str, message) -> object:  # pragma: no cover - unused
+        self.classify_calls.append((account, message))
+        return type("Decision", (), {"action": "inbox", "category": None, "confidence": None})()
+
+
+class StubSenders:
+    def is_blacklisted(self, *_args, **_kwargs) -> bool:  # pragma: no cover - unused
+        return False
+
+    def is_whitelisted(self, *_args, **_kwargs) -> bool:  # pragma: no cover - unused
+        return False
+
+    def apply_flag(self, *_args, **_kwargs) -> None:  # pragma: no cover - unused
+        return None
+
+
+class StubMover:
+    def move_to_category(self, *_args, **_kwargs) -> Path:  # pragma: no cover - unused
+        return Path("/tmp/msg:2,RS")
+
+    def move_to_inbox(self, *_args, **_kwargs) -> Path:  # pragma: no cover - unused
+        return Path("/tmp/msg:2,RS")
 
 
 class StubTrainer:
@@ -56,24 +69,30 @@ class StubWatcher:
 
 
 def _make_runtime(name: str) -> AccountRuntime:
-    pipeline = StubPipeline()
     trainer = StubTrainer()
     watcher = StubWatcher()
+    categories = {
+        "Spam": CategoryConfig(name="Spam", flag=FolderFlag.SPAM),
+        "Inbox": CategoryConfig(name="Inbox", flag=FolderFlag.NEUTRAL),
+    }
     return AccountRuntime(
         name=name,
         maildir=Path(f"/tmp/{name}"),
-        pipeline=pipeline,
+        rule_engine=StubRuleEngine(),
+        senders=StubSenders(),
+        mover=StubMover(),
         trainer=trainer,
         watcher=watcher,
+        categories=categories,
         papaya_flag=None,
     )
 
 
 def test_account_runtime_status_snapshot_reflects_metrics():
     runtime = _make_runtime("primary")
-    runtime.pipeline.metrics.processed = 5
-    runtime.pipeline.metrics.inbox_deliveries = 2
-    runtime.pipeline.metrics.category_deliveries["Spam"] = 1
+    runtime.metrics.processed = 5
+    runtime.metrics.inbox_deliveries = 2
+    runtime.metrics.category_deliveries["Spam"] = 1
 
     snapshot = runtime.status_snapshot()
 

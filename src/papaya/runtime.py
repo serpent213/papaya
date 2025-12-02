@@ -1,4 +1,4 @@
-"""Runtime helpers for orchestrating watchers, pipelines, and training."""
+"""Runtime helpers for orchestrating watchers, rule execution, and training."""
 
 from __future__ import annotations
 
@@ -6,15 +6,25 @@ import logging
 import signal
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from email.message import EmailMessage
 from pathlib import Path
 from types import FrameType
 from typing import Any
 
-from .maildir import extract_message_id, has_keyword_flag, remove_keyword_flag
-from .pipeline import Pipeline, PipelineResult
+from .maildir import (
+    MaildirError,
+    extract_message_id,
+    has_keyword_flag,
+    read_message,
+    remove_keyword_flag,
+)
+from .mover import MailMover
+from .rules import RuleDecision, RuleEngine, RuleError
+from .senders import SenderLists
 from .trainer import Trainer
+from .types import CategoryConfig, FolderFlag
 from .watcher import MaildirWatcher
 
 SignalHandler = Callable[[int, FrameType | None], Any] | int | signal.Handlers | None
@@ -65,18 +75,38 @@ class AutoClassificationCache:
 
 
 @dataclass
+class ClassificationMetrics:
+    """Lightweight counters for rule-engine deliveries."""
+
+    processed: int = 0
+    inbox_deliveries: int = 0
+    whitelist_hits: int = 0
+    blacklist_hits: int = 0
+    malformed_messages: int = 0
+    category_deliveries: dict[str, int] = field(default_factory=dict)
+
+    def record_category(self, category: str) -> None:
+        self.category_deliveries[category] = self.category_deliveries.get(category, 0) + 1
+
+
+@dataclass
 class AccountRuntime:
     """Bundles all runtime objects for a single account."""
 
     name: str
     maildir: Path
-    pipeline: Pipeline
+    rule_engine: RuleEngine
+    senders: SenderLists
+    mover: MailMover
     trainer: Trainer
     watcher: MaildirWatcher
+    categories: Mapping[str, CategoryConfig]
     papaya_flag: str | None = None
     auto_cache: AutoClassificationCache = field(default_factory=AutoClassificationCache)
+    metrics: ClassificationMetrics = field(default_factory=ClassificationMetrics)
 
     def __post_init__(self) -> None:
+        self._flag_targets = self._build_flag_targets(self.categories.values())
         self.watcher.on_new_mail(self._handle_new_mail)
         self.watcher.on_user_sort(self._handle_user_sort)
 
@@ -91,7 +121,7 @@ class AccountRuntime:
     def status_snapshot(self) -> dict[str, Any]:
         """Return a serialisable summary of runtime state."""
 
-        metrics = self.pipeline.metrics
+        metrics = self.metrics
         return {
             "account": self.name,
             "maildir": str(self.maildir),
@@ -105,8 +135,37 @@ class AccountRuntime:
         }
 
     def _handle_new_mail(self, path: Path) -> None:
-        result = self.pipeline.process_new_mail(path)
-        self._cache_auto_sorted(result)
+        target = Path(path)
+        self.metrics.processed += 1
+        try:
+            message = read_message(target)
+        except MaildirError as exc:
+            self.metrics.malformed_messages += 1
+            LOGGER.error("Failed to read message %s: %s", target, exc)
+            return
+
+        message_id = _message_id(message) or target.name
+        from_address = _from_address(message)
+
+        try:
+            if self._apply_sender_shortcuts(target, message_id, from_address):
+                return
+
+            try:
+                decision = self.rule_engine.execute_classify(self.name, message)
+            except RuleError as exc:
+                LOGGER.exception(
+                    "Rule engine classification failed for %s (account=%s): %s",
+                    target,
+                    self.name,
+                    exc,
+                )
+                self._deliver_to_inbox(target)
+                return
+
+            self._apply_rule_decision(target, decision, message_id)
+        except MaildirError as exc:
+            LOGGER.error("Maildir operation failed for %s: %s", target, exc)
 
     def _handle_user_sort(self, path: Path, category: str) -> None:
         message_id = extract_message_id(path)
@@ -120,9 +179,91 @@ class AccountRuntime:
         cleaned_path = self._strip_papaya_flag(Path(path), message_id)
         self.trainer.on_user_sort(cleaned_path, category)
 
-    def _cache_auto_sorted(self, result: PipelineResult) -> None:
-        if result.message_id and result.category:
-            self.auto_cache.add(result.message_id)
+    def _apply_rule_decision(
+        self,
+        path: Path,
+        decision: RuleDecision,
+        message_id: str | None,
+    ) -> None:
+        if decision.action == "move" and decision.category:
+            self.mover.move_to_category(path, decision.category, add_papaya_flag=True)
+            self._record_category_move(decision.category, message_id)
+            return
+        self._deliver_to_inbox(path)
+
+    def _apply_sender_shortcuts(
+        self,
+        path: Path,
+        message_id: str | None,
+        from_address: str | None,
+    ) -> bool:
+        if from_address and self.senders.is_blacklisted(self.name, from_address):
+            LOGGER.info(
+                "Sender %s blacklisted; delivering %s to spam folder (account=%s)",
+                from_address,
+                path,
+                self.name,
+            )
+            self.metrics.blacklist_hits += 1
+            self._deliver_by_flag(
+                path,
+                FolderFlag.SPAM,
+                message_id,
+                fallback_inbox=False,
+            )
+            return True
+
+        if from_address and self.senders.is_whitelisted(self.name, from_address):
+            LOGGER.info(
+                "Sender %s whitelisted; bypassing rules for %s (account=%s)",
+                from_address,
+                path,
+                self.name,
+            )
+            self.metrics.whitelist_hits += 1
+            self._deliver_by_flag(
+                path,
+                FolderFlag.HAM,
+                message_id,
+                fallback_inbox=True,
+            )
+            return True
+        return False
+
+    def _deliver_by_flag(
+        self,
+        path: Path,
+        flag: FolderFlag,
+        message_id: str | None,
+        *,
+        fallback_inbox: bool,
+    ) -> None:
+        category = self._flag_targets.get(flag)
+        if category:
+            self.mover.move_to_category(path, category, add_papaya_flag=True)
+            self._record_category_move(category, message_id)
+            return
+        if fallback_inbox:
+            self._deliver_to_inbox(path)
+            return
+        self._deliver_to_inbox(path)
+
+    def _deliver_to_inbox(self, path: Path) -> None:
+        self.mover.move_to_inbox(path)
+        self.metrics.inbox_deliveries += 1
+
+    def _record_category_move(self, category: str, message_id: str | None) -> None:
+        self.metrics.record_category(category)
+        if message_id:
+            self.auto_cache.add(message_id)
+
+    @staticmethod
+    def _build_flag_targets(configs: Iterable[CategoryConfig]) -> dict[FolderFlag, str]:
+        targets: dict[FolderFlag, str] = {}
+        for config in configs:
+            if config.flag in (FolderFlag.HAM, FolderFlag.SPAM) and config.flag not in targets:
+                targets[config.flag] = config.name
+        return targets
 
     def _strip_papaya_flag(self, path: Path, message_id: str | None) -> Path:
         letter = self.papaya_flag
@@ -151,6 +292,22 @@ class AccountRuntime:
             self.name,
         )
         return new_path
+
+
+def _message_id(message: EmailMessage) -> str | None:
+    raw = message.get("Message-ID")
+    if not raw:
+        return None
+    candidate = raw.strip()
+    return candidate or None
+
+
+def _from_address(message: EmailMessage) -> str | None:
+    raw = message.get("From")
+    if not raw:
+        return None
+    candidate = raw.strip()
+    return candidate or None
 
 
 class DaemonRuntime:

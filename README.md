@@ -1,15 +1,15 @@
 Papaya Spam Eater
 ==================
 
-Papaya is an on-device daemon that keeps local Maildir inboxes clean. It watches configured accounts, extracts lightweight features from each message, and routes spam, newsletters, and ham based on pluggable machine learning classifiers plus dynamic sender allow/deny lists.
+Papaya is an on-device daemon that keeps local Maildir inboxes clean. It watches configured accounts, extracts lightweight features from each message, and routes spam, newsletters, and ham via a rule engine that orchestrates pluggable ML modules plus dynamic sender allow/deny lists.
 
 ## Highlights
 
-- 🔌 **Pluggable classifiers** – Naive Bayes (active) and TF‑IDF + SGD (shadow) with shared registry and persisted state.
-- 📨 **Maildir-native pipeline** – Filesystem watcher reacts instantly to new mail or user-sorted messages and retrains in place.
+- 🧠 **Rule-driven automation** – Python snippets embedded in config files coordinate module calls, sender shortcuts, and routing decisions.
+- 🔌 **Hot-reloadable modules** – Built-in and user modules expose classify/train hooks with persisted state managed through the store.
 - 📚 **Sender intelligence** – Ham/spam folder flags maintain per-account whitelists and blacklists to bypass ML when possible.
-- 🧠 **Continuous learning** – Every user correction triggers immediate training; classifiers are saved atomically per account.
-- 🛠 **Modern CLI** – Typer-based commands for daemon control, manual classification, bulk training, and classifier comparisons.
+- 🔁 **Continuous learning** – Every user correction triggers immediate training through `train_rules`; module state is persisted incrementally.
+- 🛠 **Modern CLI** – Typer-based commands for daemon control, manual classification, and bulk training.
 - 🔁 **Runtime control** – Foreground/background modes with PID management, SIGHUP config reloads, and SIGUSR1 status dumps.
 
 ## Requirements
@@ -32,33 +32,40 @@ Papaya reads `~/.config/papaya/config.yaml` by default (override with `papaya --
 
 ```yaml
 root_dir: ~/.local/lib/papaya
+module_paths:
+  - ~/.config/papaya/modules
 maildirs:
   - name: personal
     path: /var/vmail/example.com/personal
+rules: |
+  features = modules.extract_features.classify(message)
+  bayes = modules.naive_bayes.classify(message, features, account)
+
+  if bayes.scores.get("Spam", 0) > 0.85:
+      move_to("Spam", confidence=bayes.scores["Spam"])
+  if features.has_list_unsubscribe:
+      move_to("Newsletters", confidence=0.8)
+
+train_rules: |
+  features = modules.extract_features.classify(message)
+  modules.naive_bayes.train(message, features, category, account)
+  modules.tfidf_sgd.train(message, features, category, account)
 categories:
   Spam:
-    min_confidence: 0.85
     flag: spam
   Newsletters:
-    min_confidence: 0.7
+    flag: neutral
   Important:
-    min_confidence: 0.8
     flag: ham
-classifiers:
-  - name: naive_bayes
-    type: naive_bayes
-    mode: active
-  - name: tfidf_sgd
-    type: tfidf_sgd
-    mode: shadow
 logging:
   level: info
   debug_file: false
 ```
 
 - `root_dir` stores models, sender lists, logs, and PID files.
-- Categorised folders inherit behaviour from `flag` (`ham`, `spam`, or `neutral`).
-- Add multiple Maildir accounts and classifier definitions as needed.
+- `module_paths` optionally append user module directories that override the built-ins.
+- `rules` and `train_rules` define the classification/train flows; per-account overrides live under each `maildirs` entry.
+- `categories` map folders to behaviours via `flag` (`ham`, `spam`, or `neutral`).
 
 ## Running the Daemon
 
@@ -91,7 +98,7 @@ Quick visibility into state is also available via:
 papaya status
 ```
 
-The status command inspects configured accounts, classifier persistence, PID liveness, and training metadata.
+The status command inspects configured accounts, module state, PID liveness, and training metadata.
 
 ## CLI Reference
 
@@ -99,9 +106,8 @@ The status command inspects configured accounts, classifier persistence, PID liv
 | --- | --- |
 | `papaya daemon [-d]` | Run the daemon in foreground or background. |
 | `papaya status` | Show configuration summary and whether the daemon is running. |
-| `papaya classify path/to/message.eml [-a account]` | Inspect predictions from all classifiers for a single message. |
-| `papaya train [--full] [-a account]` | Replay categorised mail for manual training; `--full` clears trained-ID cache first. |
-| `papaya compare` | Analyse prediction logs vs. training truth to compare classifier accuracy. |
+| `papaya classify path/to/message.eml [-a account]` | Execute the configured rules for a single message. |
+| `papaya train [--full] [-a account]` | Replay categorised mail for manual training; `--full` clears trained-ID cache first and reloads modules with fresh models. |
 
 ## Development
 

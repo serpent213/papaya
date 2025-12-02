@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import multiprocessing
 import os
@@ -15,24 +14,18 @@ from typing import Annotated, Any, NoReturn
 import typer
 
 from . import __version__
-from .classifiers.naive_bayes import NaiveBayesClassifier
-from .classifiers.registry import ClassifierRegistry
-from .classifiers.tfidf_sgd import TfidfSgdClassifier
 from .config import Config, ConfigError, MaildirAccount, load_config
 from .dovecot import DovecotKeywords
-from .extractor.features import extract_features
 from .logging import configure_logging
 from .maildir import read_message
 from .modules import ModuleContext, ModuleLoader
 from .mover import MailMover
 from .pidfile import PidFile, PidFileError, pid_alive, read_pid
-from .pipeline import Pipeline
-from .rules import RuleEngine
+from .rules import RuleEngine, RuleError
 from .runtime import AccountRuntime, DaemonRuntime
 from .senders import SenderLists
 from .store import Store
 from .trainer import Trainer
-from .types import Category, ClassifierMode, Prediction
 from .watcher import MaildirWatcher
 
 app = typer.Typer(help="Papaya spam daemon utilities.")
@@ -152,12 +145,6 @@ def status(
     typer.echo("Accounts:")
     for account in config.maildirs:
         typer.echo(f"  - {account.name}: {account.path}")
-        for classifier_cfg in config.classifiers:
-            model_path = store.model_path(classifier_cfg.name, account=account.name)
-            exists = "present" if model_path.exists() else "missing"
-            typer.echo(
-                f"      {classifier_cfg.name} [{classifier_cfg.mode.name.lower()}]: {exists}"
-            )
     typer.echo("")
     typer.echo(f"Trained IDs: {len(store.trained_ids)}")
     typer.echo(f"Prediction log: {store.prediction_log_path}")
@@ -176,15 +163,11 @@ def classify(
         ),
     ] = None,
 ) -> None:
-    """Classify a single RFC822 message using all configured classifiers."""
+    """Run the rule engine for a single RFC822 message."""
 
     state = _state(ctx)
     config, store, _senders = _load_environment(state)
     target = _resolve_account(config, account)
-    try:
-        registry = _build_registry(config, store, target.name, load_models=True)
-    except ConfigError as exc:
-        _config_failure(exc)
     message_path = message.expanduser()
     if not message_path.is_file():
         typer.secho(f"Message file not found: {message_path}", fg=typer.colors.RED, err=True)
@@ -196,16 +179,24 @@ def classify(
         typer.secho(f"Failed to parse message: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from exc
 
-    features = extract_features(parsed)
-    predictions = registry.predict_all(features)
-    message_id = parsed.get("Message-ID") or message_path.name
-    store.log_predictions(target.name, message_id, predictions)
-
-    typer.echo(f"Message: {message_path}")
-    typer.echo(f"Account: {target.name}")
-    typer.echo(f"Message-ID: {message_id}")
-    typer.echo("")
-    _print_predictions(predictions, registry.modes())
+    module_loader, rule_engine = _initialise_rule_engine(config, store)
+    try:
+        try:
+            decision = rule_engine.execute_classify(target.name, parsed)
+        except RuleError as exc:
+            typer.secho(f"Rule execution failed: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from exc
+        message_id = parsed.get("Message-ID") or message_path.name
+        typer.echo(f"Message: {message_path}")
+        typer.echo(f"Account: {target.name}")
+        typer.echo(f"Message-ID: {message_id}")
+        typer.echo("Decision:")
+        typer.echo(f"  action: {decision.action}")
+        typer.echo(f"  category: {decision.category or 'inbox'}")
+        confidence = f"{decision.confidence:.2f}" if decision.confidence is not None else "n/a"
+        typer.echo(f"  confidence: {confidence}")
+    finally:
+        module_loader.call_cleanup()
 
 
 @app.command()
@@ -236,17 +227,12 @@ def train(
     if full:
         store.trained_ids.reset()
 
-    module_loader, rule_engine = _initialise_rule_engine(config, store)
+    module_loader, rule_engine = _initialise_rule_engine(config, store, fresh_models=full)
     try:
         for acct in targets:
-            try:
-                registry = _build_registry(config, store, acct.name, load_models=not full)
-            except ConfigError as exc:
-                _config_failure(exc)
             trainer = Trainer(
                 account=acct.name,
                 maildir=acct.path,
-                registry=registry,
                 senders=senders,
                 store=store,
                 categories=config.categories,
@@ -260,56 +246,6 @@ def train(
             )
     finally:
         module_loader.call_cleanup()
-
-
-@app.command()
-def compare(ctx: typer.Context) -> None:
-    """Compare classifier accuracy using prediction logs and training events."""
-
-    state = _state(ctx)
-    config, store, _senders = _load_environment(state)
-    log_path = store.prediction_log_path
-    if not log_path.exists():
-        typer.secho(f"Prediction log not found: {log_path}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1) from None
-
-    truth = store.trained_ids.snapshot()
-    if not truth:
-        typer.secho("No training data recorded yet.", fg=typer.colors.YELLOW)
-        raise typer.Exit(1) from None
-
-    stats: dict[str, tuple[int, int]] = {}
-    with log_path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            message_id = record.get("message_id")
-            classifier_name = record.get("classifier")
-            predicted = record.get("category")
-            actual = truth.get(message_id)
-            if not message_id or actual is None or classifier_name is None:
-                continue
-            total, correct = stats.get(classifier_name, (0, 0))
-            total += 1
-            if predicted == actual:
-                correct += 1
-            stats[classifier_name] = (total, correct)
-
-    if not stats:
-        typer.secho(
-            "No overlapping predictions and training records found.", fg=typer.colors.YELLOW
-        )
-        raise typer.Exit(1) from None
-
-    typer.echo("Classifier comparison:")
-    for name, (total, correct) in sorted(stats.items()):
-        accuracy = correct / total if total else 0.0
-        typer.echo(f"  {name}: {correct}/{total} correct ({accuracy:.1%})")
 
 
 def _state(ctx: typer.Context) -> CLIState:
@@ -356,8 +292,6 @@ def _run_daemon_process(
         cfg: Config,
         store_obj: Store,
         sender_lists: SenderLists,
-        *,
-        load_models: bool = True,
     ) -> list[AccountRuntime]:
         return [
             _build_account_runtime(
@@ -366,13 +300,12 @@ def _run_daemon_process(
                 store_obj,
                 sender_lists,
                 engine,
-                load_models=load_models,
             )
             for account in cfg.maildirs
         ]
 
-    def rebuild_accounts(load_models: bool = True) -> list[AccountRuntime]:
-        return _build_accounts(rule_engine, config, store, senders, load_models=load_models)
+    def rebuild_accounts() -> list[AccountRuntime]:
+        return _build_accounts(rule_engine, config, store, senders)
 
     def reload_callback() -> tuple[list[AccountRuntime], bool]:
         nonlocal config, store, senders, module_loader, rule_engine
@@ -398,7 +331,6 @@ def _run_daemon_process(
                 new_config,
                 new_store,
                 new_senders,
-                load_models=True,
             )
         except Exception:
             new_loader.call_cleanup()
@@ -432,8 +364,6 @@ def _build_account_runtime(
     store: Store,
     senders: SenderLists,
     rule_engine: RuleEngine,
-    *,
-    load_models: bool = True,
 ) -> AccountRuntime:
     keywords = DovecotKeywords(account.path)
     try:
@@ -443,19 +373,9 @@ def _build_account_runtime(
             f"Failed to register Papaya keyword for account '{account.name}': {exc}"
         ) from exc
     mover = MailMover(account.path, papaya_flag=papaya_flag)
-    registry = _build_registry(config, store, account.name, load_models=load_models)
-    pipeline = Pipeline(
-        account=account.name,
-        maildir=account.path,
-        rule_engine=rule_engine,
-        senders=senders,
-        categories=config.categories,
-        mover=mover,
-    )
     trainer = Trainer(
         account=account.name,
         maildir=account.path,
-        registry=registry,
         senders=senders,
         store=store,
         categories=config.categories,
@@ -465,9 +385,12 @@ def _build_account_runtime(
     return AccountRuntime(
         name=account.name,
         maildir=account.path,
-        pipeline=pipeline,
+        rule_engine=rule_engine,
+        senders=senders,
+        mover=mover,
         trainer=trainer,
         watcher=watcher,
+        categories=config.categories,
         papaya_flag=papaya_flag,
     )
 
@@ -494,31 +417,6 @@ def _format_status_message(config: Config, snapshots: list[dict[str, Any]]) -> s
     return "\n".join(lines)
 
 
-CLASSIFIER_FACTORIES = {
-    "naive_bayes": NaiveBayesClassifier,
-    "tfidf_sgd": TfidfSgdClassifier,
-}
-
-
-def _build_registry(
-    config: Config,
-    store: Store,
-    account_name: str,
-    *,
-    load_models: bool,
-) -> ClassifierRegistry:
-    registry = ClassifierRegistry()
-    for classifier_cfg in config.classifiers:
-        factory = CLASSIFIER_FACTORIES.get(classifier_cfg.type.lower())
-        if factory is None:
-            raise ConfigError(f"Unknown classifier type: {classifier_cfg.type}")
-        classifier = factory(name=classifier_cfg.name)
-        if load_models:
-            store.load_classifier(classifier, account=account_name)
-        registry.register(classifier, classifier_cfg.mode)
-    return registry
-
-
 def _module_search_paths(config: Config) -> list[Path]:
     builtin = (Path(__file__).resolve().parent / "modules").resolve()
     if not builtin.exists():
@@ -526,10 +424,15 @@ def _module_search_paths(config: Config) -> list[Path]:
     return [builtin, *config.module_paths]
 
 
-def _initialise_rule_engine(config: Config, store: Store) -> tuple[ModuleLoader, RuleEngine]:
+def _initialise_rule_engine(
+    config: Config,
+    store: Store,
+    *,
+    fresh_models: bool = False,
+) -> tuple[ModuleLoader, RuleEngine]:
     loader = ModuleLoader(_module_search_paths(config))
     loader.load_all()
-    context = ModuleContext(config=config, store=store)
+    context = ModuleContext(config=config, store=store, fresh_models=fresh_models)
     loader.call_startup(context)
     engine = RuleEngine(loader, config.rules, config.train_rules)
     for account in config.maildirs:
@@ -559,44 +462,6 @@ def _select_accounts(config: Config, requested: Iterable[str] | None) -> list[Ma
             typer.secho(f"Unknown account '{name}'.", fg=typer.colors.RED, err=True)
             raise typer.Exit(1) from None
     return accounts
-
-
-def _print_predictions(
-    predictions: dict[str, Prediction], modes: dict[str, ClassifierMode]
-) -> None:
-    if not predictions:
-        typer.secho("No classifiers configured.", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1) from None
-    name_width = max(len(name) for name in predictions)
-    typer.echo("Predictions:")
-    for name, prediction in predictions.items():
-        mode = modes.get(name, ClassifierMode.SHADOW)
-        flag = "A" if mode is ClassifierMode.ACTIVE else "S"
-        category = _format_category(prediction.category)
-        typer.echo(f"  {name:<{name_width}} [{flag}]: {category} ({prediction.confidence:.2%})")
-    active_name = _active_classifier_name(modes)
-    active_prediction = predictions.get(active_name)
-    if active_prediction:
-        typer.echo("─" * (name_width + 32))
-        typer.echo(
-            f"Consensus ({active_name}): {_format_category(active_prediction.category)} "
-            f"({active_prediction.confidence:.2%})"
-        )
-
-
-def _format_category(category: Category | str | None) -> str:
-    if isinstance(category, Category):
-        return category.value
-    if isinstance(category, str) and category:
-        return category
-    return "Inbox"
-
-
-def _active_classifier_name(modes: dict[str, ClassifierMode]) -> str:
-    for name, mode in modes.items():
-        if mode is ClassifierMode.ACTIVE:
-            return name
-    raise RuntimeError("No active classifier configured.")
 
 
 def _pid_file_path(pid_file: Path | None, config: Config) -> Path:

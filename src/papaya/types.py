@@ -24,13 +24,6 @@ class FolderFlag(Enum):
     NEUTRAL = auto()
 
 
-class ClassifierMode(Enum):
-    """Classifier operational mode."""
-
-    ACTIVE = auto()
-    SHADOW = auto()
-
-
 @dataclass(frozen=True)
 class Features:
     """Extracted email features for classification."""
@@ -72,14 +65,12 @@ class CategoryConfig:
     """Per-category behaviour configuration."""
 
     name: str
-    min_confidence: float
     flag: FolderFlag
 
 
 __all__ = [
     "Category",
     "FolderFlag",
-    "ClassifierMode",
     "Features",
     "Prediction",
     "MaildirAccount",

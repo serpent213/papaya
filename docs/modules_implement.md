@@ -1362,17 +1362,4 @@ categories:
 
 ### Backward Compatibility
 
-During migration period, support both formats:
-
-```python
-def load_config(path: Path) -> Config:
-    raw = yaml.safe_load(path.read_text())
-
-    if "rules" in raw:
-        return _load_new_format(raw)
-    elif "classifiers" in raw:
-        LOGGER.warning("Using legacy config format. Please migrate to rule-based config.")
-        return _load_legacy_format(raw)
-    else:
-        raise ConfigError("Invalid config: missing 'rules' or 'classifiers'")
-```
+Legacy classifier-centric configs are no longer accepted. Administrators must migrate to the rule-based schema before upgrading; the loader now requires `rules`/`train_rules` to be present and fails fast otherwise.
