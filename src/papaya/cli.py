@@ -182,11 +182,15 @@ def classify(
     module_loader, rule_engine = _initialise_rule_engine(config, store)
     try:
         try:
-            decision = rule_engine.execute_classify(target.name, parsed)
+            message_id = (parsed.get("Message-ID") or "").strip() or message_path.name
+            decision = rule_engine.execute_classify(
+                target.name,
+                parsed,
+                message_id=message_id,
+            )
         except RuleError as exc:
             typer.secho(f"Rule execution failed: {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(1) from exc
-        message_id = parsed.get("Message-ID") or message_path.name
         typer.echo(f"Message: {message_path}")
         typer.echo(f"Account: {target.name}")
         typer.echo(f"Message-ID: {message_id}")
@@ -434,7 +438,7 @@ def _initialise_rule_engine(
     loader.load_all()
     context = ModuleContext(config=config, store=store, fresh_models=fresh_models)
     loader.call_startup(context)
-    engine = RuleEngine(loader, config.rules, config.train_rules)
+    engine = RuleEngine(loader, store, config.rules, config.train_rules)
     for account in config.maildirs:
         engine.set_account_rules(account.name, account.rules, account.train_rules)
     return loader, engine

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from types import CodeType
 from typing import TYPE_CHECKING, Any
@@ -10,6 +11,10 @@ if TYPE_CHECKING:
     from email.message import EmailMessage
 
     from papaya.modules.loader import ModuleLoader
+    from papaya.store import Store
+    from papaya.types import Prediction
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -58,10 +63,12 @@ class RuleEngine:
     def __init__(
         self,
         loader: ModuleLoader,
+        store: Store,
         global_rules: str,
         global_train_rules: str,
     ) -> None:
         self._loader = loader
+        self._store = store
         self._global_rules = self._compile(global_rules, "<global_rules>")
         self._global_train_rules = self._compile(global_train_rules, "<global_train_rules>")
         self._account_rules: dict[str, CodeType] = {}
@@ -87,10 +94,16 @@ class RuleEngine:
         elif account in self._account_train_rules:
             self._account_train_rules.pop(account, None)
 
-    def execute_classify(self, account: str, message: EmailMessage) -> RuleDecision:
+    def execute_classify(
+        self,
+        account: str,
+        message: EmailMessage,
+        *,
+        message_id: str,
+    ) -> RuleDecision:
         """Run classification rules for a single account."""
 
-        namespace = self._build_classify_namespace(message, account)
+        namespace = self._build_classify_namespace(message, account, message_id)
         account_rules = self._account_rules.get(account)
         if account_rules is not None:
             self._exec_safe(account_rules, namespace, f"{account}_rules")
@@ -115,8 +128,16 @@ class RuleEngine:
             return
         self._exec_safe(self._global_train_rules, namespace, "global_train_rules")
 
-    def _build_classify_namespace(self, message: EmailMessage, account: str) -> dict[str, Any]:
+    def _build_classify_namespace(
+        self,
+        message: EmailMessage,
+        account: str,
+        message_id: str,
+    ) -> dict[str, Any]:
         namespace: dict[str, Any] = {}
+        message_identifier = message_id or _header_value(message, "Message-ID") or "<missing>"
+        from_address = _header_value(message, "From")
+        subject = _header_value(message, "Subject", strip=False)
 
         def move_to(category: str, confidence: float = 1.0) -> None:
             namespace["_decision"] = RuleDecision(
@@ -131,14 +152,36 @@ class RuleEngine:
         def fallback() -> None:
             namespace["_decision"] = RuleDecision(action="fallback")
 
+        def log(classifier: str, prediction: Prediction) -> None:
+            if not classifier or prediction is None:
+                return
+            try:
+                self._store.log_predictions(
+                    account,
+                    message_identifier,
+                    {classifier: prediction},
+                    recipient=account,
+                    from_address=from_address,
+                    subject=subject,
+                )
+            except Exception:  # pragma: no cover - logging should not break classification
+                LOGGER.exception(
+                    "Failed to log prediction for classifier '%s' (account=%s, message_id=%s)",
+                    classifier,
+                    account,
+                    message_identifier,
+                )
+
         namespace.update(
             {
                 "message": message,
                 "account": account,
                 "modules": ModuleNamespace(self._loader),
+                "message_id": message_identifier,
                 "move_to": move_to,
                 "skip": skip,
                 "fallback": fallback,
+                "log": log,
                 "_decision": None,
                 "__builtins__": __builtins__,
             }
@@ -174,6 +217,16 @@ class RuleEngine:
             exec(code, namespace)
         except Exception as exc:
             raise RuleError(f"Rule execution failed for {context}: {exc}", cause=exc) from exc
+
+
+def _header_value(message: EmailMessage, header: str, *, strip: bool = True) -> str | None:
+    raw = message.get(header)
+    if raw is None:
+        return None
+    text = str(raw)
+    if strip:
+        text = text.strip()
+    return text or None
 
 
 __all__ = ["RuleEngine", "RuleDecision", "RuleError", "ModuleNamespace"]

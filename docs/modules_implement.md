@@ -430,10 +430,12 @@ class RuleEngine:
     def __init__(
         self,
         loader: ModuleLoader,
+        store: Store,
         global_rules: str,
         global_train_rules: str,
     ) -> None:
         self._loader = loader
+        self._store = store
         self._global_rules = self._compile(global_rules, "<global_rules>")
         self._global_train_rules = self._compile(global_train_rules, "<global_train_rules>")
         self._account_rules: dict[str, CodeType] = {}
@@ -451,7 +453,13 @@ class RuleEngine:
         if train_rules:
             self._account_train_rules[account] = self._compile(train_rules, f"<{account}_train_rules>")
 
-    def execute_classify(self, account: str, message: EmailMessage) -> RuleDecision:
+    def execute_classify(
+        self,
+        account: str,
+        message: EmailMessage,
+        *,
+        message_id: str,
+    ) -> RuleDecision:
         """Execute classification rules for account.
 
         Flow:
@@ -459,7 +467,7 @@ class RuleEngine:
         2. If custom rules return fallback() or don't decide, run global rules
         3. If nothing decides, default to inbox
         """
-        namespace = self._build_classify_namespace(message, account)
+        namespace = self._build_classify_namespace(message, account, message_id)
 
         # Try account-specific rules first
         if account in self._account_rules:
@@ -467,6 +475,7 @@ class RuleEngine:
             decision = namespace.get("_decision")
             if decision and decision.action != "fallback":
                 return decision
+            namespace["_decision"] = None
 
         # Fallback to global rules
         self._exec_safe(self._global_rules, namespace, "global")
@@ -482,9 +491,16 @@ class RuleEngine:
         rules = self._account_train_rules.get(account) or self._global_train_rules
         self._exec_safe(rules, namespace, account)
 
-    def _build_classify_namespace(self, message: EmailMessage, account: str) -> dict:
+    def _build_classify_namespace(
+        self,
+        message: EmailMessage,
+        account: str,
+        message_id: str,
+    ) -> dict:
         """Build execution namespace for classification."""
         decision_holder: dict[str, RuleDecision | None] = {"_decision": None}
+        from_address = (message.get("From") or "").strip() or None
+        subject = message.get("Subject")
 
         def move_to(category: str, confidence: float = 1.0) -> None:
             decision_holder["_decision"] = RuleDecision(
@@ -499,13 +515,26 @@ class RuleEngine:
         def fallback() -> None:
             decision_holder["_decision"] = RuleDecision(action="fallback")
 
+        def log(classifier: str, prediction: Prediction) -> None:
+            """Append classifier scores plus message metadata to predictions.log."""
+            self._store.log_predictions(
+                account,
+                message_id or "<missing>",
+                {classifier: prediction},
+                recipient=account,
+                from_address=from_address,
+                subject=subject,
+            )
+
         return {
             "message": message,
             "account": account,
+            "message_id": message_id,
             "modules": ModuleNamespace(self._loader),
             "move_to": move_to,
             "skip": skip,
             "fallback": fallback,
+            "log": log,
             "_decision": None,
             "__builtins__": __builtins__,  # Allow standard Python
         }
@@ -836,7 +865,11 @@ class AccountRuntime:
             return
 
         # Execute classification rules
-        decision = self.rule_engine.execute_classify(self.name, message)
+        decision = self.rule_engine.execute_classify(
+            self.name,
+            message,
+            message_id=message_id,
+        )
 
         if decision.action == "move" and decision.category:
             dest = self.mover.move_to_category(path, decision.category, add_papaya_flag=True)
@@ -1181,12 +1214,16 @@ def test_remove_keyword_flag():
 
 # tests/unit/test_rules.py
 
+class MockStore:
+    def log_predictions(self, *_args, **_kwargs):
+        pass
+
 def test_rule_move_to():
     """move_to() sets decision correctly."""
     loader = MockModuleLoader()
-    engine = RuleEngine(loader, "move_to('Spam', confidence=0.9)", "pass")
+    engine = RuleEngine(loader, MockStore(), "move_to('Spam', confidence=0.9)", "pass")
 
-    decision = engine.execute_classify("test", MockMessage())
+    decision = engine.execute_classify("test", MockMessage(), message_id="<msg>")
 
     assert decision.action == "move"
     assert decision.category == "Spam"
@@ -1198,12 +1235,13 @@ def test_rule_fallback():
     loader = MockModuleLoader()
     engine = RuleEngine(
         loader,
+        MockStore(),
         global_rules="move_to('Default')",
         global_train_rules="pass",
     )
     engine.set_account_rules("personal", "fallback()", None)
 
-    decision = engine.execute_classify("personal", MockMessage())
+    decision = engine.execute_classify("personal", MockMessage(), message_id="<msg>")
 
     assert decision.category == "Default"
 
@@ -1213,7 +1251,7 @@ def test_rule_syntax_error():
     loader = MockModuleLoader()
 
     with pytest.raises(RuleError) as exc_info:
-        RuleEngine(loader, "if True", "pass")  # Missing colon
+        RuleEngine(loader, MockStore(), "if True", "pass")  # Missing colon
 
     assert "Syntax error" in str(exc_info.value)
 ```

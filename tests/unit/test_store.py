@@ -112,13 +112,23 @@ def test_log_predictions_writes_json_lines(tmp_path):
         scores={Category.SPAM: 0.92, Category.NEWSLETTERS: 0.05, Category.IMPORTANT: 0.03},
     )
 
-    store.log_predictions("personal", "<id-1>", {"naive_bayes": prediction})
+    store.log_predictions(
+        "personal",
+        "<id-1>",
+        {"naive_bayes": prediction},
+        recipient="acc",
+        from_address="sender@example.com",
+        subject="Test",
+    )
 
     payload = store.prediction_log_path.read_text(encoding="utf-8").strip()
     data = json.loads(payload)
     assert data["account"] == "personal"
     assert data["message_id"] == "<id-1>"
     assert data["classifier"] == "naive_bayes"
+    assert data["recipient"] == "acc"
+    assert data["from_address"] == "sender@example.com"
+    assert data["subject"] == "Test"
     assert data["category"] == "Spam"
     assert data["scores"]["Spam"] == 0.92
 
@@ -130,6 +140,9 @@ def test_prediction_logger_rotates(tmp_path):
         account="personal",
         message_id="<id>",
         classifier="nb",
+        recipient=None,
+        from_address=None,
+        subject=None,
         category="Spam",
         confidence=0.9,
         scores={"Spam": 0.9},

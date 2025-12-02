@@ -135,8 +135,15 @@ class RuleDecision:
     confidence: float | None
 
 class RuleEngine:
-    def __init__(self, loader: ModuleLoader, global_rules: str, global_train_rules: str):
+    def __init__(
+        self,
+        loader: ModuleLoader,
+        store: Store,
+        global_rules: str,
+        global_train_rules: str,
+    ):
         self._loader = loader
+        self._store = store
         self._global_rules = compile(global_rules, "<global_rules>", "exec")
         self._global_train_rules = compile(global_train_rules, "<global_train_rules>", "exec")
         self._account_rules: dict[str, CodeType] = {}
@@ -145,15 +152,23 @@ class RuleEngine:
     def set_account_rules(self, account: str, rules: str | None, train_rules: str | None) -> None:
         """Compile and cache account-specific rules."""
 
-    def execute_classify(self, account: str, message: EmailMessage) -> RuleDecision:
+    def execute_classify(
+        self,
+        account: str,
+        message: EmailMessage,
+        *,
+        message_id: str,
+    ) -> RuleDecision:
         """Run classification rules for account (with global fallback)."""
-        namespace = self._build_namespace(message)
+        namespace = self._build_classify_namespace(message, account, message_id)
 
         # Try account rules first
         if account in self._account_rules:
             exec(self._account_rules[account], namespace)
-            if namespace.get("_decision"):
-                return namespace["_decision"]
+            decision = namespace.get("_decision")
+            if decision and decision.action != "fallback":
+                return decision
+            namespace["_decision"] = None
 
         # Fallback to global
         exec(self._global_rules, namespace)
@@ -161,32 +176,62 @@ class RuleEngine:
 
     def execute_train(self, account: str, message: EmailMessage, category: str) -> None:
         """Run training rules for account."""
-        namespace = self._build_namespace(message, category=category)
+        namespace = self._build_train_namespace(message, account, category)
         rules = self._account_train_rules.get(account) or self._global_train_rules
         exec(rules, namespace)
 
-    def _build_namespace(self, message: EmailMessage, category: str | None = None) -> dict:
+    def _build_classify_namespace(
+        self,
+        message: EmailMessage,
+        account: str,
+        message_id: str,
+    ) -> dict:
         """Build execution namespace with helpers."""
-        decision_holder = {}
 
         def move_to(cat: str, confidence: float = 1.0):
-            decision_holder["_decision"] = RuleDecision("move", cat, confidence)
+            namespace["_decision"] = RuleDecision("move", cat, confidence)
 
         def skip():
-            decision_holder["_decision"] = RuleDecision("inbox", None, None)
+            namespace["_decision"] = RuleDecision("inbox", None, None)
 
         def fallback():
-            decision_holder["_decision"] = RuleDecision("fallback", None, None)
+            namespace["_decision"] = RuleDecision("fallback", None, None)
 
-        return {
+        def log(classifier: str, prediction: Prediction) -> None:
+            """Append classifier scores (and message metadata) to predictions.log."""
+            self._store.log_predictions(
+                account,
+                message_id,
+                {classifier: prediction},
+                recipient=account,
+                from_address=message.get("From"),
+                subject=message.get("Subject"),
+            )
+
+        namespace = {
             "message": message,
-            "category": category,  # Only set in train context
+            "message_id": message_id,
             "modules": ModuleNamespace(self._loader),
             "move_to": move_to,
             "skip": skip,
             "fallback": fallback,
+            "log": log,
             "_decision": None,
-            # Safety: no __builtins__ override needed since admin-only
+        }
+        return namespace
+
+    def _build_train_namespace(
+        self,
+        message: EmailMessage,
+        account: str,
+        category: str,
+    ) -> dict:
+        return {
+            "message": message,
+            "account": account,
+            "category": category,
+            "modules": ModuleNamespace(self._loader),
+            "_decision": None,
         }
 
 class ModuleNamespace:
@@ -197,6 +242,8 @@ class ModuleNamespace:
     def __getattr__(self, name: str):
         return self._loader.get(name)
 ```
+
+Rules can now call `log("classifier_name", prediction)` inside rule snippets to append entries to `predictions.log`. The helper automatically captures the account alias (recipient), sender address, and subject so every log line has comparable metadata.
 
 ---
 
@@ -410,7 +457,11 @@ class RulePipeline:
             return PipelineResult(action="whitelist", ...)
 
         # Execute classification rules
-        decision = self._rule_engine.execute_classify(self._account, message)
+        decision = self._rule_engine.execute_classify(
+            self._account,
+            message,
+            message_id=message_id,
+        )
 
         if decision.action == "move" and decision.category:
             dest = self._mover.move_to_category(msg_path, decision.category, add_papaya_flag=True)

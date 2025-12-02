@@ -9,10 +9,16 @@ from papaya.types import CategoryConfig, FolderFlag
 
 class StubRuleEngine:
     def __init__(self) -> None:
-        self.classify_calls: list[tuple[str, object]] = []
+        self.classify_calls: list[tuple[str, object, str]] = []
 
-    def execute_classify(self, account: str, message) -> object:  # pragma: no cover - unused
-        self.classify_calls.append((account, message))
+    def execute_classify(
+        self,
+        account: str,
+        message,
+        *,
+        message_id: str,
+    ) -> object:  # pragma: no cover - unused
+        self.classify_calls.append((account, message, message_id))
         return type("Decision", (), {"action": "inbox", "category": None, "confidence": None})()
 
 

@@ -69,6 +69,10 @@ class Store:
         account: str | None,
         message_id: str,
         predictions: Mapping[str, Prediction],
+        *,
+        recipient: str | None = None,
+        from_address: str | None = None,
+        subject: str | None = None,
     ) -> None:
         """Append classifier predictions for later analysis."""
 
@@ -80,6 +84,9 @@ class Store:
                 message_id=message_id,
                 prediction=prediction,
                 timestamp=timestamp,
+                recipient=recipient,
+                from_address=from_address,
+                subject=subject,
             )
             self._prediction_logger.append(record)
 
@@ -235,6 +242,9 @@ class PredictionRecord:
     account: str | None
     message_id: str
     classifier: str
+    recipient: str | None
+    from_address: str | None
+    subject: str | None
     category: str | None
     confidence: float
     scores: Mapping[str, float]
@@ -248,6 +258,9 @@ class PredictionRecord:
         message_id: str,
         prediction: Prediction,
         timestamp: datetime | None = None,
+        recipient: str | None = None,
+        from_address: str | None = None,
+        subject: str | None = None,
     ) -> PredictionRecord:
         ts = timestamp or datetime.now(timezone.utc)
         if isinstance(prediction.category, Category):
@@ -267,6 +280,9 @@ class PredictionRecord:
             account=account,
             message_id=message_id,
             classifier=classifier_name,
+            recipient=recipient,
+            from_address=from_address,
+            subject=subject,
             category=category,
             confidence=float(prediction.confidence),
             scores=scores,
@@ -278,6 +294,9 @@ class PredictionRecord:
             "account": self.account,
             "message_id": self.message_id,
             "classifier": self.classifier,
+            "recipient": self.recipient,
+            "from_address": self.from_address,
+            "subject": self.subject,
             "category": self.category,
             "confidence": self.confidence,
             "scores": self.scores,

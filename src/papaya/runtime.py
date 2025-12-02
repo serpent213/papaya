@@ -152,7 +152,11 @@ class AccountRuntime:
                 return
 
             try:
-                decision = self.rule_engine.execute_classify(self.name, message)
+                decision = self.rule_engine.execute_classify(
+                    self.name,
+                    message,
+                    message_id=message_id,
+                )
             except RuleError as exc:
                 LOGGER.exception(
                     "Rule engine classification failed for %s (account=%s): %s",
