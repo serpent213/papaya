@@ -133,39 +133,82 @@ class TrainedIdRegistry:
         with self._lock:
             return normalized in self._seen
 
-    def add(self, message_id: str) -> bool:
+    def category(self, message_id: str) -> str | None:
+        """Return the most recently recorded category for the given message ID."""
+
         normalized = self._normalize(message_id)
         if not normalized:
+            return None
+        with self._lock:
+            return self._seen.get(normalized)
+
+    def add(self, message_id: str, category: str | None = None) -> bool:
+        """Record that a message ID has been trained for the given category.
+
+        Returns True when the registry changed (new message or updated category),
+        and False when the existing entry already matches the provided category.
+        """
+
+        normalized_id = self._normalize(message_id)
+        normalized_category = self._normalize_category(category)
+        if not normalized_id:
             return False
         with self._lock:
-            if normalized in self._seen:
+            exists = normalized_id in self._seen
+            current = self._seen.get(normalized_id)
+            if exists and current == normalized_category:
                 return False
-            self._seen.add(normalized)
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            with self._path.open("a", encoding="utf-8") as handle:
-                handle.write(f"{normalized}\n")
+            self._seen[normalized_id] = normalized_category
+            self._append_record(normalized_id, normalized_category)
             return True
 
     def __len__(self) -> int:
         with self._lock:
             return len(self._seen)
 
-    def _load_existing(self) -> set[str]:
+    def _append_record(self, message_id: str, category: str | None) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        record = message_id if category is None else f"{message_id}\t{category}"
+        with self._path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{record}\n")
+
+    def _load_existing(self) -> dict[str, str | None]:
         if not self._path.exists():
-            return set()
-        contents = set()
+            return {}
+        contents: dict[str, str | None] = {}
         with self._path.open("r", encoding="utf-8") as handle:
             for line in handle:
-                normalized = self._normalize(line)
-                if normalized:
-                    contents.add(normalized)
+                message_id, category = self._parse_line(line)
+                if message_id:
+                    contents[message_id] = category
         return contents
+
+    def _parse_line(self, line: str) -> tuple[str | None, str | None]:
+        stripped = line.strip()
+        if not stripped:
+            return None, None
+        if "\t" in stripped:
+            message_id, category = stripped.split("\t", 1)
+        else:
+            message_id, category = stripped, None
+        normalized_id = self._normalize(message_id)
+        normalized_category = self._normalize_category(category)
+        return normalized_id, normalized_category
 
     @staticmethod
     def _normalize(message_id: str | None) -> str | None:
         if not message_id:
             return None
         normalized = message_id.strip()
+        if not normalized:
+            return None
+        return normalized
+
+    @staticmethod
+    def _normalize_category(category: str | None) -> str | None:
+        if category is None:
+            return None
+        normalized = category.strip()
         if not normalized:
             return None
         return normalized

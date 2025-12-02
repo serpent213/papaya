@@ -89,6 +89,21 @@ def test_trained_id_registry_persists(tmp_path):
     assert reloaded.has("<msg-1@example>")
 
 
+def test_trained_id_registry_tracks_categories(tmp_path):
+    path = tmp_path / "state" / "trained_ids.txt"
+    registry = TrainedIdRegistry(path)
+
+    assert registry.add("<msg-2@example>", category="Spam")
+    assert registry.category("<msg-2@example>") == "Spam"
+    assert not registry.add("<msg-2@example>", category="Spam")
+
+    assert registry.add("<msg-2@example>", category="Important")
+    assert registry.category("<msg-2@example>") == "Important"
+
+    reloaded = TrainedIdRegistry(path)
+    assert reloaded.category("<msg-2@example>") == "Important"
+
+
 def test_log_predictions_writes_json_lines(tmp_path):
     store = Store(tmp_path / "state")
     prediction = Prediction(
