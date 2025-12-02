@@ -133,6 +133,58 @@ def normalize_category_name(category: str | Category) -> str:
     return normalized
 
 
+def parse_maildir_info(filename: str) -> tuple[str, str, str]:
+    """Return (base, standard_flags, keyword_flags) parsed from filename."""
+
+    if ":2," not in filename:
+        return filename, "", ""
+    base, flag_section = filename.rsplit(":2,", 1)
+    standard_flags = "".join(char for char in flag_section if char.isupper())
+    keyword_flags = "".join(char for char in flag_section if char.islower())
+    return base, standard_flags, keyword_flags
+
+
+def build_maildir_filename(base: str, standard_flags: str, keyword_flags: str) -> str:
+    """Reconstruct a maildir filename, sorting flags for determinism."""
+
+    sorted_standard = "".join(sorted(set(standard_flags)))
+    sorted_keywords = "".join(sorted(set(keyword_flags)))
+    return f"{base}:2,{sorted_standard}{sorted_keywords}"
+
+
+def add_keyword_flag(filename: str, letter: str) -> str:
+    """Add a keyword flag letter to a filename."""
+
+    if not letter:
+        return filename
+    base, standard_flags, keyword_flags = parse_maildir_info(filename)
+    if letter in keyword_flags:
+        return filename
+    keyword_flags = "".join(sorted(set(keyword_flags + letter)))
+    return build_maildir_filename(base, standard_flags, keyword_flags)
+
+
+def remove_keyword_flag(filename: str, letter: str) -> str:
+    """Remove a keyword flag letter from a filename."""
+
+    if not letter:
+        return filename
+    base, standard_flags, keyword_flags = parse_maildir_info(filename)
+    if letter not in keyword_flags:
+        return filename
+    keyword_flags = keyword_flags.replace(letter, "")
+    return build_maildir_filename(base, standard_flags, keyword_flags)
+
+
+def has_keyword_flag(filename: str, letter: str) -> bool:
+    """Return True if filename contains the provided keyword letter."""
+
+    if not letter:
+        return False
+    _, _, keyword_flags = parse_maildir_info(filename)
+    return letter in keyword_flags
+
+
 def _relative_to(path: Path, base: Path) -> Path | None:
     try:
         return path.resolve().relative_to(base.expanduser().resolve())
@@ -162,4 +214,9 @@ __all__ = [
     "read_message",
     "extract_message_id",
     "normalize_category_name",
+    "parse_maildir_info",
+    "build_maildir_filename",
+    "add_keyword_flag",
+    "remove_keyword_flag",
+    "has_keyword_flag",
 ]
