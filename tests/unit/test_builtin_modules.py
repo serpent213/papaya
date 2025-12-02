@@ -24,6 +24,9 @@ def _build_context(tmp_path: Path) -> ModuleContext:
         categories={"Spam": CategoryConfig(name="Spam", min_confidence=0.5, flag=FolderFlag.SPAM)},
         classifiers=[],
         logging=LoggingConfig(),
+        module_paths=[],
+        rules="pass",
+        train_rules="pass",
     )
     store = Store(config.root_dir)
     return ModuleContext(config=config, store=store)

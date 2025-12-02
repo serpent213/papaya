@@ -63,6 +63,8 @@ class MaildirAccount:
 
     name: str
     path: Path
+    rules: str | None = None
+    train_rules: str | None = None
 
 
 @dataclass(frozen=True)

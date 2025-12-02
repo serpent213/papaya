@@ -46,6 +46,9 @@ class Config:
     categories: dict[str, CategoryConfig]
     classifiers: list[ClassifierConfig]
     logging: LoggingConfig
+    module_paths: list[Path]
+    rules: str
+    train_rules: str
 
 
 def load_config(path: Path | str | None = None) -> Config:
@@ -79,12 +82,18 @@ def _parse_config(raw: dict[str, Any]) -> Config:
     categories = _parse_categories(raw.get("categories"))
     classifiers = _parse_classifiers(raw.get("classifiers"))
     logging_config = _parse_logging(raw.get("logging"))
+    module_paths = _parse_module_paths(raw.get("module_paths"))
+    rules = _parse_rule_block(raw.get("rules"), "rules")
+    train_rules = _parse_rule_block(raw.get("train_rules"), "train_rules")
     return Config(
         root_dir=root_dir,
         maildirs=maildirs,
         categories=categories,
         classifiers=classifiers,
         logging=logging_config,
+        module_paths=module_paths,
+        rules=rules,
+        train_rules=train_rules,
     )
 
 
@@ -104,9 +113,60 @@ def _parse_maildirs(value: Any) -> list[MaildirAccount]:
         path = entry.get("path")
         if not name or not path:
             raise ConfigError(f"maildirs[{idx}] requires 'name' and 'path'.")
-        maildirs.append(MaildirAccount(name=str(name), path=Path(path).expanduser()))
+        account_rules = _parse_optional_rule_block(entry.get("rules"), f"maildirs[{idx}].rules")
+        account_train_rules = _parse_optional_rule_block(
+            entry.get("train_rules"), f"maildirs[{idx}].train_rules"
+        )
+        maildirs.append(
+            MaildirAccount(
+                name=str(name),
+                path=Path(path).expanduser(),
+                rules=account_rules,
+                train_rules=account_train_rules,
+            )
+        )
 
     return maildirs
+
+
+def _parse_module_paths(value: Any) -> list[Path]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ConfigError("module_paths must be a list.")
+
+    paths: list[Path] = []
+    for idx, entry in enumerate(value, start=1):
+        if isinstance(entry, Path):
+            path = entry
+        elif isinstance(entry, str):
+            path = Path(entry)
+        else:
+            raise ConfigError(f"module_paths[{idx}] must be a string path.")
+        paths.append(path.expanduser())
+    return paths
+
+
+def _parse_rule_block(value: Any, field_name: str) -> str:
+    if value is None:
+        raise ConfigError(f"{field_name} must be provided.")
+    if not isinstance(value, str):
+        raise ConfigError(f"{field_name} must be a string.")
+    text = str(value)
+    if not text.strip():
+        raise ConfigError(f"{field_name} cannot be empty.")
+    return text
+
+
+def _parse_optional_rule_block(value: Any, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ConfigError(f"{field_name} must be a string.")
+    text = str(value)
+    if not text.strip():
+        raise ConfigError(f"{field_name} cannot be empty.")
+    return text
 
 
 def _parse_categories(value: Any) -> dict[str, CategoryConfig]:

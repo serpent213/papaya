@@ -19,6 +19,10 @@ def _write_config(tmp_path: Path, maildir: Path, root_dir: Path | None = None) -
         "\n".join(
             [
                 f"root_dir: {root}",
+                "rules: |",
+                "  pass",
+                "train_rules: |",
+                "  pass",
                 "maildirs:",
                 "  - name: personal",
                 f"    path: {maildir}",
