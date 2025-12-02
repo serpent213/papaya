@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import multiprocessing
 import os
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 
 import typer
 
@@ -21,6 +22,7 @@ from .config import Config, ConfigError, MaildirAccount, load_config
 from .extractor.features import extract_features
 from .logging import configure_logging
 from .maildir import read_message
+from .pidfile import PidFile, PidFileError, pid_alive, read_pid
 from .pipeline import Pipeline
 from .runtime import AccountRuntime, DaemonRuntime
 from .senders import SenderLists
@@ -31,6 +33,7 @@ from .watcher import MaildirWatcher
 
 app = typer.Typer(help="Papaya spam daemon utilities.")
 DEFAULT_PID_NAME = "papaya.pid"
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,22 +92,30 @@ def daemon(
     state = _state(ctx)
     config = _load_config(state.config_path)
     pid_path = _pid_file_path(pid_file, config)
+    try:
+        PidFile.ensure_can_start(pid_path)
+    except PidFileError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
     if background:
         _start_background_daemon(
+            initial_config=config,
             config_path=state.config_path,
             pid_path=pid_path,
             skip_initial_training=skip_initial_training,
         )
         return
 
-    configure_logging(config.logging, config.root_dir)
-    store = Store(config.root_dir)
-    senders = SenderLists(config.root_dir)
-    try:
-        runtime = _build_daemon_runtime(config, store, senders)
-    except ConfigError as exc:
-        _config_failure(exc)
-    runtime.run(initial_training=not skip_initial_training)
+    with PidFile(pid_path):
+        try:
+            _run_daemon_process(
+                initial_config=config,
+                config_path=state.config_path,
+                skip_initial_training=skip_initial_training,
+            )
+        except ConfigError as exc:
+            _config_failure(exc)
 
 
 @app.command()
@@ -318,6 +329,59 @@ def _config_failure(exc: ConfigError) -> NoReturn:
     raise typer.Exit(2) from exc
 
 
+def _run_daemon_process(
+    *,
+    initial_config: Config,
+    config_path: Path | None,
+    skip_initial_training: bool,
+) -> None:
+    config = initial_config
+    configure_logging(config.logging, config.root_dir)
+    store = Store(config.root_dir)
+    senders = SenderLists(config.root_dir)
+
+    def rebuild_accounts(load_models: bool = True) -> list[AccountRuntime]:
+        return [
+            _build_account_runtime(
+                account,
+                config,
+                store,
+                senders,
+                load_models=load_models,
+            )
+            for account in config.maildirs
+        ]
+
+    def reload_callback() -> tuple[list[AccountRuntime], bool]:
+        nonlocal config, store, senders
+        try:
+            new_config = load_config(config_path)
+        except ConfigError as exc:  # pragma: no cover - exercised in reload tests
+            LOGGER.error("Failed to reload Papaya configuration: %s", exc)
+            raise
+        if new_config.root_dir != config.root_dir:
+            LOGGER.info(
+                "Papaya root dir changed from %s to %s",
+                config.root_dir,
+                new_config.root_dir,
+            )
+            store = Store(new_config.root_dir)
+            senders = SenderLists(new_config.root_dir)
+        config = new_config
+        configure_logging(config.logging, config.root_dir)
+        return rebuild_accounts(load_models=True), True
+
+    def status_callback(snapshots: list[dict[str, Any]]) -> str | None:
+        return _format_status_message(config, snapshots)
+
+    runtime = DaemonRuntime(
+        rebuild_accounts(),
+        reload_callback=reload_callback,
+        status_callback=status_callback,
+    )
+    runtime.run(initial_training=not skip_initial_training)
+
+
 def _build_daemon_runtime(config: Config, store: Store, senders: SenderLists) -> DaemonRuntime:
     accounts = [
         _build_account_runtime(account, config, store, senders) for account in config.maildirs
@@ -358,6 +422,28 @@ def _build_account_runtime(
         trainer=trainer,
         watcher=watcher,
     )
+
+
+def _format_status_message(config: Config, snapshots: list[dict[str, Any]]) -> str:
+    root = config.root_dir
+    if not snapshots:
+        return f"Papaya daemon: no configured accounts (root={root})."
+    lines = [f"Papaya daemon (root={root}) status:"]
+    for snapshot in snapshots:
+        name = snapshot["account"]
+        watcher = "running" if snapshot["watcher_running"] else "stopped"
+        processed = snapshot["processed"]
+        inbox = snapshot["inbox_deliveries"]
+        category_summary = ", ".join(
+            f"{category}={count}"
+            for category, count in sorted(snapshot["category_deliveries"].items())
+        )
+        if not category_summary:
+            category_summary = "no_moves"
+        lines.append(
+            f"  - {name}: watcher={watcher} processed={processed} inbox={inbox} {category_summary}"
+        )
+    return "\n".join(lines)
 
 
 CLASSIFIER_FACTORIES = {
@@ -454,62 +540,33 @@ def _pid_file_path(pid_file: Path | None, config: Config) -> Path:
 
 
 def _daemon_running(pid_path: Path) -> tuple[bool, int | None]:
-    if not pid_path.exists():
-        return False, None
-    pid = _read_pid(pid_path)
+    pid = read_pid(pid_path)
     if pid is None:
         return False, None
-    if _pid_alive(pid):
+    if pid_alive(pid):
         return True, pid
+    pid_path.unlink(missing_ok=True)
     return False, None
-
-
-def _read_pid(pid_path: Path) -> int | None:
-    try:
-        contents = pid_path.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    if not contents:
-        return None
-    try:
-        return int(contents)
-    except ValueError:
-        return None
-
-
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    else:
-        return True
 
 
 def _start_background_daemon(
     *,
+    initial_config: Config,
     config_path: Path | None,
     pid_path: Path,
     skip_initial_training: bool,
 ) -> None:
-    running, pid = _daemon_running(pid_path)
-    if running:
-        typer.secho(
-            f"Papaya daemon already running (PID {pid}).",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(1) from None
-    pid_path.parent.mkdir(parents=True, exist_ok=True)
     process = multiprocessing.Process(
         target=_daemon_subprocess,
-        args=(str(config_path) if config_path else None, str(pid_path), skip_initial_training),
+        args=(
+            str(config_path) if config_path else None,
+            str(pid_path),
+            skip_initial_training,
+            initial_config,
+        ),
         daemon=False,
     )
     process.start()
-    pid_path.write_text(str(process.pid), encoding="utf-8")
     typer.echo(f"Papaya daemon started in background (PID {process.pid}).")
 
 
@@ -517,26 +574,35 @@ def _daemon_subprocess(
     config_path_str: str | None,
     pid_path_str: str,
     skip_initial_training: bool,
+    initial_config: Config | None = None,
 ) -> None:
     config_path = Path(config_path_str).expanduser() if config_path_str else None
+    pid_path = Path(pid_path_str)
+    pidfile = PidFile(pid_path)
     try:
-        config = load_config(config_path)
+        pidfile.create()
+    except PidFileError as exc:  # pragma: no cover - defensive
+        sys.stderr.write(f"{exc}\n")
+        return
+    try:
+        if initial_config is None:
+            config = load_config(config_path)
+        else:
+            config = initial_config
     except ConfigError as exc:  # pragma: no cover - child process logging
         sys.stderr.write(f"Papaya configuration error: {exc}\n")
+        pidfile.remove()
         return
-    configure_logging(config.logging, config.root_dir)
-    store = Store(config.root_dir)
-    senders = SenderLists(config.root_dir)
     try:
-        runtime = _build_daemon_runtime(config, store, senders)
-    except ConfigError as exc:
+        _run_daemon_process(
+            initial_config=config,
+            config_path=config_path,
+            skip_initial_training=skip_initial_training,
+        )
+    except ConfigError as exc:  # pragma: no cover - background path
         sys.stderr.write(f"Papaya configuration error: {exc}\n")
-        return
-    pid_path = Path(pid_path_str)
-    try:
-        runtime.run(initial_training=not skip_initial_training)
     finally:
-        pid_path.unlink(missing_ok=True)
+        pidfile.remove()
 
 
 def _resolved_config_path(path: Path | None) -> Path:
