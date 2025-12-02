@@ -18,9 +18,15 @@ lint:
 typecheck:
     uv run mypy src
 
-# Execute pytest suite
-test:
-    uv run pytest
+# Execute pytest suite (all by default, filtered variants available)
+test kind="all":
+    @case "{{kind}}" in \
+        all) uv run pytest ;; \
+        unit) uv run pytest -m "not integration" ;; \
+        integration) uv run pytest -m integration ;; \
+        slow) uv run pytest -m slow ;; \
+        *) echo "Unknown test kind '{{kind}}'. Use all|unit|integration|slow." >&2; exit 1 ;; \
+    esac
 
 # Run all checks (format, lint, typing, tests)
 check: formatcheck lint typecheck test

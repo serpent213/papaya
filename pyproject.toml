@@ -41,6 +41,10 @@ where = ["src"]
 addopts = "-ra"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "integration: integration tests that hit the filesystem",
+    "slow: marks tests that take longer to run",
+]
 
 [tool.mypy]
 python_version = "3.11"

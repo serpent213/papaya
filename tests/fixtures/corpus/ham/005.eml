@@ -1,0 +1,9 @@
+From: ham005@example.company
+To: user@example.com
+Subject: Team lunch poll
+Message-ID: <ham-005@example.test>
+Date: Thu, 21 Mar 2024 10:05 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Vote for the preferred cuisine for next week's onsite team lunch.

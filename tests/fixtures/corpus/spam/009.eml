@@ -1,0 +1,9 @@
+From: spam009@example.biz
+To: user@example.com
+Subject: Suspicious login alert
+Message-ID: <spam-009@example.test>
+Date: Thu, 21 Mar 2024 10:09 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Your account was compromised, click this insecure link to reset now.

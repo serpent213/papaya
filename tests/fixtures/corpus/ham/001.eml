@@ -1,0 +1,9 @@
+From: ham001@example.company
+To: user@example.com
+Subject: Standup reminder
+Message-ID: <ham-001@example.test>
+Date: Thu, 21 Mar 2024 10:01 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Daily engineering standup tomorrow at 9am in the east room.
