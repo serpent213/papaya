@@ -12,7 +12,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Any
 
-from .maildir import extract_message_id
+from .maildir import extract_message_id, has_keyword_flag, remove_keyword_flag
 from .pipeline import Pipeline, PipelineResult
 from .trainer import Trainer
 from .watcher import MaildirWatcher
@@ -73,6 +73,7 @@ class AccountRuntime:
     pipeline: Pipeline
     trainer: Trainer
     watcher: MaildirWatcher
+    papaya_flag: str | None = None
     auto_cache: AutoClassificationCache = field(default_factory=AutoClassificationCache)
 
     def __post_init__(self) -> None:
@@ -116,11 +117,40 @@ class AccountRuntime:
                 self.name,
             )
             return
-        self.trainer.on_user_sort(path, category)
+        cleaned_path = self._strip_papaya_flag(Path(path), message_id)
+        self.trainer.on_user_sort(cleaned_path, category)
 
     def _cache_auto_sorted(self, result: PipelineResult) -> None:
         if result.message_id and result.category:
             self.auto_cache.add(result.message_id)
+
+    def _strip_papaya_flag(self, path: Path, message_id: str | None) -> Path:
+        letter = self.papaya_flag
+        if not letter:
+            return path
+        filename = path.name
+        if not has_keyword_flag(filename, letter):
+            return path
+        new_name = remove_keyword_flag(filename, letter)
+        if new_name == filename:
+            return path
+        new_path = path.with_name(new_name)
+        try:
+            path.rename(new_path)
+        except OSError as exc:  # pragma: no cover - filesystem failure fallback
+            LOGGER.warning(
+                "Failed to strip Papaya flag from %s (account=%s): %s",
+                message_id or filename,
+                self.name,
+                exc,
+            )
+            return path
+        LOGGER.info(
+            "Stripped Papaya flag from %s (account=%s)",
+            message_id or filename,
+            self.name,
+        )
+        return new_path
 
 
 class DaemonRuntime:

@@ -19,9 +19,11 @@ from .classifiers.naive_bayes import NaiveBayesClassifier
 from .classifiers.registry import ClassifierRegistry
 from .classifiers.tfidf_sgd import TfidfSgdClassifier
 from .config import Config, ConfigError, MaildirAccount, load_config
+from .dovecot import DovecotKeywords
 from .extractor.features import extract_features
 from .logging import configure_logging
 from .maildir import read_message
+from .mover import MailMover
 from .pidfile import PidFile, PidFileError, pid_alive, read_pid
 from .pipeline import Pipeline
 from .runtime import AccountRuntime, DaemonRuntime
@@ -397,6 +399,14 @@ def _build_account_runtime(
     *,
     load_models: bool = True,
 ) -> AccountRuntime:
+    keywords = DovecotKeywords(account.path)
+    try:
+        papaya_flag = keywords.ensure_keyword()
+    except RuntimeError as exc:  # pragma: no cover - configuration/environment error
+        raise ConfigError(
+            f"Failed to register Papaya keyword for account '{account.name}': {exc}"
+        ) from exc
+    mover = MailMover(account.path, papaya_flag=papaya_flag)
     registry = _build_registry(config, store, account.name, load_models=load_models)
     pipeline = Pipeline(
         account=account.name,
@@ -405,6 +415,7 @@ def _build_account_runtime(
         senders=senders,
         store=store,
         categories=config.categories,
+        mover=mover,
     )
     trainer = Trainer(
         account=account.name,
@@ -421,6 +432,7 @@ def _build_account_runtime(
         pipeline=pipeline,
         trainer=trainer,
         watcher=watcher,
+        papaya_flag=papaya_flag,
     )
 
 

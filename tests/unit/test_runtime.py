@@ -65,6 +65,7 @@ def _make_runtime(name: str) -> AccountRuntime:
         pipeline=pipeline,
         trainer=trainer,
         watcher=watcher,
+        papaya_flag=None,
     )
 
 
