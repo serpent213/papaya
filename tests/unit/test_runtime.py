@@ -14,7 +14,7 @@ class StubPipeline:
             action="inbox",
             category=None,
             destination=None,
-            prediction=None,
+            decision=None,
             message_id=None,
         )
 

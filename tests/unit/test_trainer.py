@@ -87,6 +87,7 @@ def _build_trainer(
     store: Store,
     classifier: DummyClassifier,
     features: Features,
+    rule_engine=None,
 ) -> Trainer:
     registry = ClassifierRegistry()
     registry.register(classifier, ClassifierMode.ACTIVE)
@@ -98,6 +99,7 @@ def _build_trainer(
         store=store,
         categories=_categories(),
         feature_extractor=lambda _message: features,
+        rule_engine=rule_engine,
     )
 
 
@@ -188,6 +190,40 @@ def test_trainer_retrains_when_category_changes(tmp_path):
     assert sender_lists.is_whitelisted("acc", "vip@example.com")
     assert not sender_lists.is_blacklisted("acc", "vip@example.com")
     assert store.trained_ids.category("<move>") == "Important"
+
+
+def test_trainer_invokes_rule_engine_for_training(tmp_path):
+    maildir = tmp_path / "Maildir"
+    ensure_maildir_structure(maildir, ["Spam"])
+    message_path = category_subdir(maildir, "Spam", "cur") / "msg-rule"
+    _write_message(message_path, sender="rule@example.com", message_id="<rule>")
+
+    sender_lists = SenderLists(tmp_path / "lists4")
+    store = Store(tmp_path / "state4")
+    classifier = DummyClassifier()
+    features = _build_features(from_address="rule@example.com")
+
+    class StubRuleEngine:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+
+        def execute_train(self, account: str, _message, category: str) -> None:
+            self.calls.append((account, category))
+
+    stub_engine = StubRuleEngine()
+    trainer = _build_trainer(
+        tmp_path=tmp_path,
+        maildir=maildir,
+        sender_lists=sender_lists,
+        store=store,
+        classifier=classifier,
+        features=features,
+        rule_engine=stub_engine,
+    )
+
+    trainer.on_user_sort(message_path, "Spam")
+
+    assert stub_engine.calls == [("acc", "Spam")]
 
 
 def test_initial_training_scans_new_and_cur(tmp_path):

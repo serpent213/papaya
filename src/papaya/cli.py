@@ -23,9 +23,11 @@ from .dovecot import DovecotKeywords
 from .extractor.features import extract_features
 from .logging import configure_logging
 from .maildir import read_message
+from .modules import ModuleContext, ModuleLoader
 from .mover import MailMover
 from .pidfile import PidFile, PidFileError, pid_alive, read_pid
 from .pipeline import Pipeline
+from .rules import RuleEngine
 from .runtime import AccountRuntime, DaemonRuntime
 from .senders import SenderLists
 from .store import Store
@@ -234,24 +236,30 @@ def train(
     if full:
         store.trained_ids.reset()
 
-    for acct in targets:
-        try:
-            registry = _build_registry(config, store, acct.name, load_models=not full)
-        except ConfigError as exc:
-            _config_failure(exc)
-        trainer = Trainer(
-            account=acct.name,
-            maildir=acct.path,
-            registry=registry,
-            senders=senders,
-            store=store,
-            categories=config.categories,
-        )
-        results = trainer.initial_training()
-        trained = sum(1 for result in results if result.status == "trained")
-        typer.echo(
-            f"{acct.name}: processed {len(results)} message(s), trained {trained} new sample(s)."
-        )
+    module_loader, rule_engine = _initialise_rule_engine(config, store)
+    try:
+        for acct in targets:
+            try:
+                registry = _build_registry(config, store, acct.name, load_models=not full)
+            except ConfigError as exc:
+                _config_failure(exc)
+            trainer = Trainer(
+                account=acct.name,
+                maildir=acct.path,
+                registry=registry,
+                senders=senders,
+                store=store,
+                categories=config.categories,
+                rule_engine=rule_engine,
+            )
+            results = trainer.initial_training()
+            trained = sum(1 for result in results if result.status == "trained")
+            typer.echo(
+                f"{acct.name}: processed {len(results)} message(s), "
+                f"trained {trained} new sample(s)."
+            )
+    finally:
+        module_loader.call_cleanup()
 
 
 @app.command()
@@ -341,37 +349,68 @@ def _run_daemon_process(
     configure_logging(config.logging, config.root_dir)
     store = Store(config.root_dir)
     senders = SenderLists(config.root_dir)
+    module_loader, rule_engine = _initialise_rule_engine(config, store)
 
-    def rebuild_accounts(load_models: bool = True) -> list[AccountRuntime]:
+    def _build_accounts(
+        engine: RuleEngine,
+        cfg: Config,
+        store_obj: Store,
+        sender_lists: SenderLists,
+        *,
+        load_models: bool = True,
+    ) -> list[AccountRuntime]:
         return [
             _build_account_runtime(
                 account,
-                config,
-                store,
-                senders,
+                cfg,
+                store_obj,
+                sender_lists,
+                engine,
                 load_models=load_models,
             )
-            for account in config.maildirs
+            for account in cfg.maildirs
         ]
 
+    def rebuild_accounts(load_models: bool = True) -> list[AccountRuntime]:
+        return _build_accounts(rule_engine, config, store, senders, load_models=load_models)
+
     def reload_callback() -> tuple[list[AccountRuntime], bool]:
-        nonlocal config, store, senders
+        nonlocal config, store, senders, module_loader, rule_engine
         try:
             new_config = load_config(config_path)
         except ConfigError as exc:  # pragma: no cover - exercised in reload tests
             LOGGER.error("Failed to reload Papaya configuration: %s", exc)
             raise
+        new_store = store
+        new_senders = senders
         if new_config.root_dir != config.root_dir:
             LOGGER.info(
                 "Papaya root dir changed from %s to %s",
                 config.root_dir,
                 new_config.root_dir,
             )
-            store = Store(new_config.root_dir)
-            senders = SenderLists(new_config.root_dir)
+            new_store = Store(new_config.root_dir)
+            new_senders = SenderLists(new_config.root_dir)
+        new_loader, new_rule_engine = _initialise_rule_engine(new_config, new_store)
+        try:
+            new_accounts = _build_accounts(
+                new_rule_engine,
+                new_config,
+                new_store,
+                new_senders,
+                load_models=True,
+            )
+        except Exception:
+            new_loader.call_cleanup()
+            raise
+        module_loader.call_cleanup()
+        module_loader = new_loader
+        rule_engine = new_rule_engine
         config = new_config
+        store = new_store
+        senders = new_senders
         configure_logging(config.logging, config.root_dir)
-        return rebuild_accounts(load_models=True), True
+        return new_accounts, True
 
     def status_callback(snapshots: list[dict[str, Any]]) -> str | None:
         return _format_status_message(config, snapshots)
@@ -381,14 +420,10 @@ def _run_daemon_process(
         reload_callback=reload_callback,
         status_callback=status_callback,
     )
-    runtime.run(initial_training=not skip_initial_training)
-
-
-def _build_daemon_runtime(config: Config, store: Store, senders: SenderLists) -> DaemonRuntime:
-    accounts = [
-        _build_account_runtime(account, config, store, senders) for account in config.maildirs
-    ]
-    return DaemonRuntime(accounts)
+    try:
+        runtime.run(initial_training=not skip_initial_training)
+    finally:
+        module_loader.call_cleanup()
 
 
 def _build_account_runtime(
@@ -396,6 +431,7 @@ def _build_account_runtime(
     config: Config,
     store: Store,
     senders: SenderLists,
+    rule_engine: RuleEngine,
     *,
     load_models: bool = True,
 ) -> AccountRuntime:
@@ -411,9 +447,8 @@ def _build_account_runtime(
     pipeline = Pipeline(
         account=account.name,
         maildir=account.path,
-        registry=registry,
+        rule_engine=rule_engine,
         senders=senders,
-        store=store,
         categories=config.categories,
         mover=mover,
     )
@@ -424,6 +459,7 @@ def _build_account_runtime(
         senders=senders,
         store=store,
         categories=config.categories,
+        rule_engine=rule_engine,
     )
     watcher = MaildirWatcher(account.path, config.categories.keys())
     return AccountRuntime(
@@ -481,6 +517,24 @@ def _build_registry(
             store.load_classifier(classifier, account=account_name)
         registry.register(classifier, classifier_cfg.mode)
     return registry
+
+
+def _module_search_paths(config: Config) -> list[Path]:
+    builtin = (Path(__file__).resolve().parent / "modules").resolve()
+    if not builtin.exists():
+        raise ConfigError(f"Built-in module directory missing: {builtin}")
+    return [builtin, *config.module_paths]
+
+
+def _initialise_rule_engine(config: Config, store: Store) -> tuple[ModuleLoader, RuleEngine]:
+    loader = ModuleLoader(_module_search_paths(config))
+    loader.load_all()
+    context = ModuleContext(config=config, store=store)
+    loader.call_startup(context)
+    engine = RuleEngine(loader, config.rules, config.train_rules)
+    for account in config.maildirs:
+        engine.set_account_rules(account.name, account.rules, account.train_rules)
+    return loader, engine
 
 
 def _resolve_account(config: Config, name: str | None) -> MaildirAccount:

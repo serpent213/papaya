@@ -11,6 +11,7 @@ from pathlib import Path
 from .classifiers.registry import ClassifierRegistry
 from .extractor.features import extract_features
 from .maildir import MaildirError, category_subdir, read_message
+from .rules import RuleEngine, RuleError
 from .senders import SenderLists
 from .store import Store
 from .types import Category, CategoryConfig, Features
@@ -43,6 +44,7 @@ class Trainer:
         categories: Mapping[str, CategoryConfig],
         feature_extractor: Callable[[EmailMessage | bytes | str], Features] = extract_features,
         message_loader: Callable[[Path], EmailMessage] = read_message,
+        rule_engine: RuleEngine | None = None,
     ) -> None:
         self._account = account
         self._maildir = maildir.expanduser()
@@ -56,6 +58,7 @@ class Trainer:
         self._category_labels = {
             cfg.name: self._category_enum(cfg.name) for cfg in self._category_configs.values()
         }
+        self._rule_engine = rule_engine
 
     def on_user_sort(self, msg_path: Path, category_name: str) -> TrainingResult:
         """Handle a message that appeared inside a category folder."""
@@ -129,6 +132,7 @@ class Trainer:
                 reason="classifier_training_failed",
             )
 
+        self._run_rule_training(message, config.name)
         if message_id:
             self._store.trained_ids.add(message_id, category=config.name)
         self._persist_classifiers()
@@ -195,6 +199,18 @@ class Trainer:
                 self._store.save_classifier(classifier, account=self._account)
             except Exception:  # pragma: no cover - defensive safety
                 LOGGER.exception("Failed to persist classifier '%s'", classifier.name)
+
+    def _run_rule_training(self, message: EmailMessage, category_name: str) -> None:
+        if not self._rule_engine:
+            return
+        try:
+            self._rule_engine.execute_train(self._account, message, category_name)
+        except RuleError:
+            LOGGER.exception(
+                "Rule engine training failed for account '%s' (category=%s)",
+                self._account,
+                category_name,
+            )
 
 
 def _message_id_from(message: EmailMessage, fallback: str) -> str:

@@ -104,7 +104,10 @@ class ModuleLoader:
 
     def _module_name(self, path: Path) -> str | None:
         if path.is_file() and path.suffix == ".py":
-            return path.stem
+            name = path.stem
+            if name == "__init__":
+                return None
+            return name
         if path.is_dir() and (path / "__init__.py").exists():
             return path.name
         return None
