@@ -88,6 +88,7 @@ Useful flags:
 
 - `--pid-file` – override PID file location (defaults to `<root_dir>/papaya.pid`).
 - `--skip-initial-training` – start watching immediately without replaying existing category folders.
+- `--dry-run` – exercise the daemon without moving/rewriting messages (watchers still create folders).
 
 ### Signals & Status
 

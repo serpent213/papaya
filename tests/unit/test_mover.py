@@ -95,3 +95,20 @@ def test_move_to_category_can_skip_flag(tmp_path):
     )
 
     assert not has_keyword_flag(destination.name, "a")
+
+
+def test_dry_run_skips_maildir_writes(tmp_path):
+    maildir = tmp_path / "Maildir"
+    ensure_maildir_structure(maildir, ["Spam"])
+    mover = MailMover(maildir, dry_run=True)
+    source = _write_message(inbox_new_dir(maildir) / "dry-run")
+
+    destination = mover.move_to_category(source, "Spam")
+
+    assert destination == source
+    assert source.exists()
+
+    inbox_destination = mover.move_to_inbox(source)
+
+    assert inbox_destination == source
+    assert source.exists()

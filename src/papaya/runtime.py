@@ -100,6 +100,7 @@ class AccountRuntime:
     papaya_flag: str | None = None
     auto_cache: AutoClassificationCache = field(default_factory=AutoClassificationCache)
     metrics: ClassificationMetrics = field(default_factory=ClassificationMetrics)
+    dry_run: bool = False
 
     def __post_init__(self) -> None:
         self.watcher.on_new_mail(self._handle_new_mail)
@@ -195,6 +196,13 @@ class AccountRuntime:
     def _strip_papaya_flag(self, path: Path, message_id: str | None) -> Path:
         letter = self.papaya_flag
         if not letter:
+            return path
+        if self.dry_run:
+            LOGGER.info(
+                "Dry-run: skipping Papaya flag removal for %s (account=%s)",
+                message_id or path.name,
+                self.name,
+            )
             return path
         filename = path.name
         if not has_keyword_flag(filename, letter):

@@ -37,6 +37,7 @@ class CLIState:
     """Stores shared CLI options."""
 
     config_path: Path | None
+    dry_run: bool = False
 
 
 @app.callback()
@@ -50,11 +51,18 @@ def _papaya(
             help="Path to Papaya config (env PAPAYA_CONFIG or ~/.config/papaya/config.yaml).",
         ),
     ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Log actions without modifying maildirs (except watcher directory prep).",
+        ),
+    ] = False,
 ) -> None:
     """Capture global CLI options."""
 
     resolved = config.expanduser() if config else None
-    ctx.obj = CLIState(config_path=resolved)
+    ctx.obj = CLIState(config_path=resolved, dry_run=dry_run)
 
 
 @app.command()
@@ -100,6 +108,7 @@ def daemon(
             config_path=state.config_path,
             pid_path=pid_path,
             skip_initial_training=skip_initial_training,
+            dry_run=state.dry_run,
         )
         return
 
@@ -109,6 +118,7 @@ def daemon(
                 initial_config=config,
                 config_path=state.config_path,
                 skip_initial_training=skip_initial_training,
+                dry_run=state.dry_run,
             )
         except ConfigError as exc:
             _config_failure(exc)
@@ -281,6 +291,7 @@ def _run_daemon_process(
     initial_config: Config,
     config_path: Path | None,
     skip_initial_training: bool,
+    dry_run: bool,
 ) -> None:
     config = initial_config
     configure_logging(config.logging, config.root_dir)
@@ -298,6 +309,7 @@ def _run_daemon_process(
                 cfg,
                 store_obj,
                 engine,
+                dry_run=dry_run,
             )
             for account in cfg.maildirs
         ]
@@ -357,15 +369,20 @@ def _build_account_runtime(
     config: Config,
     store: Store,
     rule_engine: RuleEngine,
+    *,
+    dry_run: bool = False,
 ) -> AccountRuntime:
     keywords = DovecotKeywords(account.path)
-    try:
-        papaya_flag = keywords.ensure_keyword()
-    except RuntimeError as exc:  # pragma: no cover - configuration/environment error
-        raise ConfigError(
-            f"Failed to register Papaya keyword for account '{account.name}': {exc}"
-        ) from exc
-    mover = MailMover(account.path, papaya_flag=papaya_flag)
+    if dry_run:
+        papaya_flag = keywords.existing_letter()
+    else:
+        try:
+            papaya_flag = keywords.ensure_keyword()
+        except RuntimeError as exc:  # pragma: no cover - configuration/environment error
+            raise ConfigError(
+                f"Failed to register Papaya keyword for account '{account.name}': {exc}"
+            ) from exc
+    mover = MailMover(account.path, papaya_flag=papaya_flag, dry_run=dry_run)
     trainer = Trainer(
         account=account.name,
         maildir=account.path,
@@ -383,6 +400,7 @@ def _build_account_runtime(
         watcher=watcher,
         categories=config.categories,
         papaya_flag=papaya_flag,
+        dry_run=dry_run,
     )
 
 
@@ -477,6 +495,7 @@ def _start_background_daemon(
     config_path: Path | None,
     pid_path: Path,
     skip_initial_training: bool,
+    dry_run: bool,
 ) -> None:
     process = multiprocessing.Process(
         target=_daemon_subprocess,
@@ -485,6 +504,7 @@ def _start_background_daemon(
             str(pid_path),
             skip_initial_training,
             initial_config,
+            dry_run,
         ),
         daemon=False,
     )
@@ -497,6 +517,7 @@ def _daemon_subprocess(
     pid_path_str: str,
     skip_initial_training: bool,
     initial_config: Config | None = None,
+    dry_run: bool = False,
 ) -> None:
     config_path = Path(config_path_str).expanduser() if config_path_str else None
     pid_path = Path(pid_path_str)
@@ -520,6 +541,7 @@ def _daemon_subprocess(
             initial_config=config,
             config_path=config_path,
             skip_initial_training=skip_initial_training,
+            dry_run=dry_run,
         )
     except ConfigError as exc:  # pragma: no cover - background path
         sys.stderr.write(f"Papaya configuration error: {exc}\n")

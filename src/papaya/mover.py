@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
 import socket
 import time
@@ -15,6 +16,8 @@ from .maildir import (
 )
 from .types import Category
 
+LOGGER = logging.getLogger(__name__)
+
 
 class MailMover:
     """Move messages between inbox and category folders."""
@@ -25,12 +28,14 @@ class MailMover:
         *,
         hostname: str | None = None,
         papaya_flag: str | None = None,
+        dry_run: bool = False,
     ) -> None:
         self._maildir = maildir.expanduser()
         guessed = hostname or socket.gethostname() or "papaya"
         self._hostname = guessed.strip() or "papaya"
         flag = (papaya_flag or "").strip()
         self._papaya_flag = flag or None
+        self._dry_run = dry_run
 
     def move_to_inbox(self, msg_path: Path) -> Path:
         """Move message into inbox cur/ and return the new path."""
@@ -65,6 +70,11 @@ class MailMover:
             raise MaildirError(f"Path is not a message file: {source}")
 
         destination_dir = destination_dir.expanduser()
+
+        if self._dry_run:
+            LOGGER.info("Dry-run: skipping move of %s into %s", source, destination_dir)
+            return source
+
         destination_dir.mkdir(parents=True, exist_ok=True)
 
         try:

@@ -63,7 +63,12 @@ class StubWatcher:
         return self.started
 
 
-def _make_runtime(name: str) -> AccountRuntime:
+def _make_runtime(
+    name: str,
+    *,
+    dry_run: bool = False,
+    papaya_flag: str | None = None,
+) -> AccountRuntime:
     trainer = StubTrainer()
     watcher = StubWatcher()
     categories = {
@@ -78,7 +83,8 @@ def _make_runtime(name: str) -> AccountRuntime:
         trainer=trainer,
         watcher=watcher,
         categories=categories,
-        papaya_flag=None,
+        papaya_flag=papaya_flag,
+        dry_run=dry_run,
     )
 
 
@@ -113,3 +119,14 @@ def test_daemon_runtime_reload_swaps_accounts_and_runs_training():
     assert runtime_b.trainer.initial_calls == 1
     snapshot = daemon.status_snapshot()
     assert snapshot[0]["account"] == "new"
+
+
+def test_strip_papaya_flag_skipped_during_dry_run(tmp_path):
+    runtime = _make_runtime("primary", dry_run=True, papaya_flag="p")
+    message = tmp_path / "message:2,p"
+    message.write_text("body", encoding="utf-8")
+
+    result = runtime._strip_papaya_flag(message, "<id>")
+
+    assert result == message
+    assert message.exists()

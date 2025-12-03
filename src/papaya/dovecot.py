@@ -21,11 +21,9 @@ class DovecotKeywords:
         """Register the Papaya keyword and return the assigned letter."""
 
         existing = self._load()
-
-        for idx, name in existing.items():
-            if name == PAPAYA_KEYWORD:
-                self._letter = self._index_to_letter(idx)
-                return self._letter
+        letter = self._extract_existing(existing)
+        if letter:
+            return letter
 
         for idx in range(_MAX_KEYWORDS):
             if idx not in existing:
@@ -35,6 +33,14 @@ class DovecotKeywords:
                 return self._letter
 
         raise RuntimeError("No free keyword slots in dovecot-keywords")
+
+    def existing_letter(self) -> str | None:
+        """Return the previously-registered keyword letter without mutating disk."""
+
+        if self._letter is not None:
+            return self._letter
+        existing = self._load()
+        return self._extract_existing(existing)
 
     @property
     def letter(self) -> str:
@@ -70,6 +76,14 @@ class DovecotKeywords:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         lines = [f"{idx} {name}" for idx, name in sorted(keywords.items())]
         self._path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def _extract_existing(self, keywords: dict[int, str]) -> str | None:
+        for idx, name in keywords.items():
+            if name == PAPAYA_KEYWORD:
+                letter = self._index_to_letter(idx)
+                self._letter = letter
+                return letter
+        return None
 
     @staticmethod
     def _index_to_letter(idx: int) -> str:
