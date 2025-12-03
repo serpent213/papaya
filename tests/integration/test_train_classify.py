@@ -18,10 +18,9 @@ from papaya.modules.loader import ModuleLoader
 from papaya.mover import MailMover
 from papaya.rules import RuleEngine
 from papaya.runtime import AccountRuntime
-from papaya.senders import SenderLists
 from papaya.store import Store
 from papaya.trainer import Trainer
-from papaya.types import CategoryConfig, FolderFlag, MaildirAccount
+from papaya.types import CategoryConfig, MaildirAccount
 from papaya.watcher import MaildirWatcher
 from tests.integration.conftest import (
     EventCollector,
@@ -94,7 +93,6 @@ def test_train_then_classify_pipeline(tmp_path: Path, corpus_dir: Path) -> None:
         copy_to_maildir(message, category_subdir(maildir, "Important", "cur"))
 
     store = Store(tmp_path / "store")
-    senders = SenderLists(store.root_dir)
     collector = EventCollector()
     mover = RecordingMailMover(maildir, papaya_flag="p", collector=collector)
 
@@ -107,7 +105,6 @@ def test_train_then_classify_pipeline(tmp_path: Path, corpus_dir: Path) -> None:
     trainer = Trainer(
         account="personal",
         maildir=maildir,
-        senders=senders,
         store=store,
         categories=config.categories,
         rule_engine=rule_engine,
@@ -123,7 +120,6 @@ def test_train_then_classify_pipeline(tmp_path: Path, corpus_dir: Path) -> None:
         name="personal",
         maildir=maildir,
         rule_engine=rule_engine,
-        senders=senders,
         mover=mover,
         trainer=trainer,
         watcher=watcher,
@@ -168,8 +164,8 @@ def _split_corpus(paths: Iterable[Path], train_ratio: float = 0.7) -> tuple[list
 
 def _build_config(maildir: Path, root_dir: Path) -> Config:
     categories = {
-        "Spam": CategoryConfig(name="Spam", flag=FolderFlag.SPAM),
-        "Important": CategoryConfig(name="Important", flag=FolderFlag.HAM),
+        "Spam": CategoryConfig(name="Spam"),
+        "Important": CategoryConfig(name="Important"),
     }
     return Config(
         root_dir=root_dir,

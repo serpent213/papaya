@@ -5,7 +5,7 @@ from pathlib import Path
 from papaya.maildir import category_subdir, ensure_maildir_structure
 from papaya.runtime import AccountRuntime
 from papaya.trainer import TrainingResult
-from papaya.types import CategoryConfig, FolderFlag
+from papaya.types import CategoryConfig
 
 
 class NoopRuleEngine:
@@ -13,17 +13,6 @@ class NoopRuleEngine:
         return type("Decision", (), {"action": "inbox", "category": None, "confidence": None})()
 
     def execute_train(self, *_args, **_kwargs) -> None:  # pragma: no cover - unused
-        return None
-
-
-class NoopSenders:
-    def is_blacklisted(self, *_args, **_kwargs) -> bool:
-        return False
-
-    def is_whitelisted(self, *_args, **_kwargs) -> bool:
-        return False
-
-    def apply_flag(self, *_args, **_kwargs) -> None:  # pragma: no cover - unused
         return None
 
 
@@ -94,14 +83,13 @@ def _build_runtime(
     trainer = RecordingTrainer()
     watcher = CapturingWatcher()
     categories = {
-        "Spam": CategoryConfig(name="Spam", flag=FolderFlag.SPAM),
-        "Inbox": CategoryConfig(name="Inbox", flag=FolderFlag.NEUTRAL),
+        "Spam": CategoryConfig(name="Spam"),
+        "Inbox": CategoryConfig(name="Inbox"),
     }
     runtime = AccountRuntime(
         name="personal",
         maildir=maildir,
         rule_engine=NoopRuleEngine(),
-        senders=NoopSenders(),
         mover=NoopMover(),
         trainer=trainer,
         watcher=watcher,

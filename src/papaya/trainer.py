@@ -10,7 +10,6 @@ from pathlib import Path
 
 from .maildir import MaildirError, category_subdir, read_message
 from .rules import RuleEngine, RuleError
-from .senders import SenderLists
 from .store import Store
 from .types import CategoryConfig
 
@@ -36,7 +35,6 @@ class Trainer:
         *,
         account: str,
         maildir: Path,
-        senders: SenderLists,
         store: Store,
         categories: Mapping[str, CategoryConfig],
         message_loader: Callable[[Path], EmailMessage] = read_message,
@@ -44,7 +42,6 @@ class Trainer:
     ) -> None:
         self._account = account
         self._maildir = maildir.expanduser()
-        self._senders = senders
         self._store = store
         self._message_loader = message_loader
         self._category_configs = {cfg.name: cfg for cfg in categories.values()}
@@ -77,8 +74,6 @@ class Trainer:
             )
 
         message_id = _message_id_from(message, path.name)
-
-        self._apply_sender_flag(config, message)
 
         should_train, previous_category = self._should_train(message_id, config.name)
         if not should_train:
@@ -130,12 +125,6 @@ class Trainer:
             return direct
         return self._category_lookup.get(category_name.lower())
 
-    def _apply_sender_flag(self, config: CategoryConfig, message: EmailMessage) -> None:
-        address = _from_address(message)
-        if not address:
-            return
-        self._senders.apply_flag(self._account, address, config.flag)
-
     def _should_train(self, message_id: str | None, category_name: str) -> tuple[bool, str | None]:
         if not message_id:
             return True, None
@@ -162,14 +151,6 @@ def _message_id_from(message: EmailMessage, fallback: str) -> str:
         if cleaned:
             return cleaned
     return fallback
-
-
-def _from_address(message: EmailMessage) -> str | None:
-    raw = message.get("From")
-    if not raw:
-        return None
-    cleaned = raw.strip()
-    return cleaned or None
 
 
 __all__ = ["Trainer", "TrainingResult"]

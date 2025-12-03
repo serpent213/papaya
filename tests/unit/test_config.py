@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from papaya.config import ConfigError, load_config
-from papaya.types import FolderFlag
 
 
 def _write_config(tmp_path: Path, content: str) -> Path:
@@ -36,8 +35,7 @@ def test_load_config_success(tmp_path: Path) -> None:
             train_rules: |
               pass
         categories:
-          Spam:
-            flag: spam
+          Spam: {{}}
         logging:
           level: debug
           debug_file: true
@@ -52,7 +50,7 @@ def test_load_config_success(tmp_path: Path) -> None:
     assert config.module_paths == [Path("~/custom/papaya").expanduser()]
     assert "skip()" in config.rules
     assert "pass" in config.train_rules
-    assert config.categories["Spam"].flag is FolderFlag.SPAM
+    assert config.categories["Spam"].name == "Spam"
     assert config.logging.debug_file is True
 
 
@@ -68,8 +66,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
           - name: inbox
             path: ~/Maildir
         categories:
-          Spam:
-            flag: spam
+          Spam: {}
         """,
     )
 
@@ -89,8 +86,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
               pass
             maildirs: []
             categories:
-              Spam:
-                flag: spam
+              Spam: {}
             """,
             "At least one maildir must be configured",
         ),
@@ -104,10 +100,9 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
               - name: inbox
                 path: ~/Maildir
             categories:
-              Spam:
-                flag: nope
+              Spam: []
             """,
-            "Unknown folder flag",
+            "Category 'Spam' config must be a mapping",
         ),
         (
             """
@@ -117,8 +112,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
               - name: inbox
                 path: ~/Maildir
             categories:
-              Spam:
-                flag: spam
+              Spam: {}
             """,
             "rules must be provided",
         ),
@@ -131,8 +125,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
               - name: inbox
                 path: ~/Maildir
             categories:
-              Spam:
-                flag: spam
+              Spam: {}
             """,
             "rules cannot be empty",
         ),
@@ -147,8 +140,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
                 path: ~/Maildir
                 rules: 123
             categories:
-              Spam:
-                flag: spam
+              Spam: {}
             """,
             "maildirs[1].rules must be a string",
         ),
@@ -159,8 +151,7 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
             train_rules: |
               pass
             categories:
-              Spam:
-                flag: spam
+              Spam: {}
             """,
             "At least one maildir must be configured",
         ),

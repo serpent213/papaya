@@ -10,7 +10,7 @@ from papaya.maildir import category_subdir, ensure_maildir_structure
 from papaya.modules import match_from
 from papaya.modules.context import ModuleContext
 from papaya.store import Store
-from papaya.types import CategoryConfig, FolderFlag, MaildirAccount
+from papaya.types import CategoryConfig, MaildirAccount
 
 
 @pytest.fixture(autouse=True)
@@ -102,8 +102,8 @@ def _build_context(
         root_dir=tmp_path / "state",
         maildirs=[account],
         categories={
-            "Spam": CategoryConfig(name="Spam", flag=FolderFlag.SPAM),
-            "Newsletters": CategoryConfig(name="Newsletters", flag=FolderFlag.NEUTRAL),
+            "Spam": CategoryConfig(name="Spam"),
+            "Newsletters": CategoryConfig(name="Newsletters"),
         },
         logging=LoggingConfig(),
         module_paths=[],

@@ -23,7 +23,6 @@ from .mover import MailMover
 from .pidfile import PidFile, PidFileError, pid_alive, read_pid
 from .rules import RuleEngine, RuleError
 from .runtime import AccountRuntime, DaemonRuntime
-from .senders import SenderLists
 from .store import Store
 from .trainer import Trainer
 from .watcher import MaildirWatcher
@@ -129,7 +128,7 @@ def status(
     """Display Papaya configuration and daemon status."""
 
     state = _state(ctx)
-    config, store, _senders = _load_environment(state)
+    config, store = _load_environment(state)
     pid_path = _pid_file_path(pid_file, config)
     running, pid = _daemon_running(pid_path)
 
@@ -166,7 +165,7 @@ def classify(
     """Run the rule engine for a single RFC822 message."""
 
     state = _state(ctx)
-    config, store, _senders = _load_environment(state)
+    config, store = _load_environment(state)
     target = _resolve_account(config, account)
     message_path = message.expanduser()
     if not message_path.is_file():
@@ -225,7 +224,7 @@ def train(
     """Trigger manual training using categorised mail."""
 
     state = _state(ctx)
-    config, store, senders = _load_environment(state)
+    config, store = _load_environment(state)
     targets = _select_accounts(config, [account] if account else None)
 
     if full:
@@ -237,7 +236,6 @@ def train(
             trainer = Trainer(
                 account=acct.name,
                 maildir=acct.path,
-                senders=senders,
                 store=store,
                 categories=config.categories,
                 rule_engine=rule_engine,
@@ -259,12 +257,11 @@ def _state(ctx: typer.Context) -> CLIState:
     return state
 
 
-def _load_environment(state: CLIState) -> tuple[Config, Store, SenderLists]:
+def _load_environment(state: CLIState) -> tuple[Config, Store]:
     config = _load_config(state.config_path)
     configure_logging(config.logging, config.root_dir)
     store = Store(config.root_dir)
-    senders = SenderLists(config.root_dir)
-    return config, store, senders
+    return config, store
 
 
 def _load_config(path: Path | None) -> Config:
@@ -288,38 +285,34 @@ def _run_daemon_process(
     config = initial_config
     configure_logging(config.logging, config.root_dir)
     store = Store(config.root_dir)
-    senders = SenderLists(config.root_dir)
     module_loader, rule_engine = _initialise_rule_engine(config, store)
 
     def _build_accounts(
         engine: RuleEngine,
         cfg: Config,
         store_obj: Store,
-        sender_lists: SenderLists,
     ) -> list[AccountRuntime]:
         return [
             _build_account_runtime(
                 account,
                 cfg,
                 store_obj,
-                sender_lists,
                 engine,
             )
             for account in cfg.maildirs
         ]
 
     def rebuild_accounts() -> list[AccountRuntime]:
-        return _build_accounts(rule_engine, config, store, senders)
+        return _build_accounts(rule_engine, config, store)
 
     def reload_callback() -> tuple[list[AccountRuntime], bool]:
-        nonlocal config, store, senders, module_loader, rule_engine
+        nonlocal config, store, module_loader, rule_engine
         try:
             new_config = load_config(config_path)
         except ConfigError as exc:  # pragma: no cover - exercised in reload tests
             LOGGER.error("Failed to reload Papaya configuration: %s", exc)
             raise
         new_store = store
-        new_senders = senders
         if new_config.root_dir != config.root_dir:
             LOGGER.info(
                 "Papaya root dir changed from %s to %s",
@@ -327,14 +320,12 @@ def _run_daemon_process(
                 new_config.root_dir,
             )
             new_store = Store(new_config.root_dir)
-            new_senders = SenderLists(new_config.root_dir)
         new_loader, new_rule_engine = _initialise_rule_engine(new_config, new_store)
         try:
             new_accounts = _build_accounts(
                 new_rule_engine,
                 new_config,
                 new_store,
-                new_senders,
             )
         except Exception:
             new_loader.call_cleanup()
@@ -344,7 +335,6 @@ def _run_daemon_process(
         rule_engine = new_rule_engine
         config = new_config
         store = new_store
-        senders = new_senders
         configure_logging(config.logging, config.root_dir)
         return new_accounts, True
 
@@ -366,7 +356,6 @@ def _build_account_runtime(
     account: MaildirAccount,
     config: Config,
     store: Store,
-    senders: SenderLists,
     rule_engine: RuleEngine,
 ) -> AccountRuntime:
     keywords = DovecotKeywords(account.path)
@@ -380,7 +369,6 @@ def _build_account_runtime(
     trainer = Trainer(
         account=account.name,
         maildir=account.path,
-        senders=senders,
         store=store,
         categories=config.categories,
         rule_engine=rule_engine,
@@ -390,7 +378,6 @@ def _build_account_runtime(
         name=account.name,
         maildir=account.path,
         rule_engine=rule_engine,
-        senders=senders,
         mover=mover,
         trainer=trainer,
         watcher=watcher,

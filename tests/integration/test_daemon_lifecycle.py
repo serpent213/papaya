@@ -15,10 +15,9 @@ from papaya.modules.loader import ModuleLoader
 from papaya.mover import MailMover
 from papaya.rules import RuleEngine
 from papaya.runtime import SIG_HUP, SIG_USR1, AccountRuntime, DaemonRuntime
-from papaya.senders import SenderLists
 from papaya.store import Store
 from papaya.trainer import Trainer, TrainingResult
-from papaya.types import CategoryConfig, FolderFlag, MaildirAccount
+from papaya.types import CategoryConfig, MaildirAccount
 from papaya.watcher import MaildirWatcher
 from tests.integration.conftest import (
     EventCollector,
@@ -85,7 +84,6 @@ class RecordingTrainer(Trainer):
         collector: EventCollector,
         account: str,
         maildir: Path,
-        senders: SenderLists,
         store: Store,
         categories: dict[str, CategoryConfig],
         rule_engine: RuleEngine,
@@ -93,7 +91,6 @@ class RecordingTrainer(Trainer):
         super().__init__(
             account=account,
             maildir=maildir,
-            senders=senders,
             store=store,
             categories=categories,
             rule_engine=rule_engine,
@@ -126,7 +123,6 @@ def test_daemon_lifecycle(tmp_path: Path, corpus_dir: Path) -> None:
     ham_pre, ham_post = _split_half(ham_validation)
 
     store = Store(tmp_path / "store")
-    senders = SenderLists(store.root_dir)
     classification_events = EventCollector()
     training_events = EventCollector()
     status_calls: list[list[dict[str, object]]] = []
@@ -149,7 +145,6 @@ def test_daemon_lifecycle(tmp_path: Path, corpus_dir: Path) -> None:
             maildir=maildir,
             config=config,
             store=store,
-            senders=senders,
             loader=current_loader,
             classification_events=classification_events,
             training_events=training_events,
@@ -248,8 +243,8 @@ def _split_half(paths: Iterable[Path]) -> tuple[list[Path], list[Path]]:
 
 def _build_config(maildir: Path, root_dir: Path) -> Config:
     categories = {
-        "Spam": CategoryConfig(name="Spam", flag=FolderFlag.SPAM),
-        "Important": CategoryConfig(name="Important", flag=FolderFlag.HAM),
+        "Spam": CategoryConfig(name="Spam"),
+        "Important": CategoryConfig(name="Important"),
     }
     return Config(
         root_dir=root_dir,
@@ -267,7 +262,6 @@ def _create_runtime(
     maildir: Path,
     config: Config,
     store: Store,
-    senders: SenderLists,
     loader: ModuleLoader,
     classification_events: EventCollector,
     training_events: EventCollector,
@@ -277,7 +271,6 @@ def _create_runtime(
         collector=training_events,
         account="personal",
         maildir=maildir,
-        senders=senders,
         store=store,
         categories=config.categories,
         rule_engine=rule_engine,
@@ -293,7 +286,6 @@ def _create_runtime(
         name="personal",
         maildir=maildir,
         rule_engine=rule_engine,
-        senders=senders,
         mover=mover,
         trainer=trainer,
         watcher=watcher,

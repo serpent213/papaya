@@ -9,13 +9,7 @@ from papaya.config import Config, LoggingConfig
 from papaya.modules import extract_features, naive_bayes, tfidf_sgd
 from papaya.modules.context import ModuleContext
 from papaya.store import Store
-from papaya.types import (
-    Category,
-    CategoryConfig,
-    Features,
-    FolderFlag,
-    MaildirAccount,
-)
+from papaya.types import Category, CategoryConfig, Features, MaildirAccount
 
 
 def _build_context(tmp_path: Path) -> ModuleContext:
@@ -23,7 +17,7 @@ def _build_context(tmp_path: Path) -> ModuleContext:
     config = Config(
         root_dir=tmp_path / "state",
         maildirs=[maildir],
-        categories={"Spam": CategoryConfig(name="Spam", flag=FolderFlag.SPAM)},
+        categories={"Spam": CategoryConfig(name="Spam")},
         logging=LoggingConfig(),
         module_paths=[],
         rules="pass",

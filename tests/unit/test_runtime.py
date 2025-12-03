@@ -4,7 +4,7 @@ from pathlib import Path
 
 from papaya.runtime import AccountRuntime, DaemonRuntime
 from papaya.trainer import TrainingResult
-from papaya.types import CategoryConfig, FolderFlag
+from papaya.types import CategoryConfig
 
 
 class StubRuleEngine:
@@ -20,17 +20,6 @@ class StubRuleEngine:
     ) -> object:  # pragma: no cover - unused
         self.classify_calls.append((account, message, message_id))
         return type("Decision", (), {"action": "inbox", "category": None, "confidence": None})()
-
-
-class StubSenders:
-    def is_blacklisted(self, *_args, **_kwargs) -> bool:  # pragma: no cover - unused
-        return False
-
-    def is_whitelisted(self, *_args, **_kwargs) -> bool:  # pragma: no cover - unused
-        return False
-
-    def apply_flag(self, *_args, **_kwargs) -> None:  # pragma: no cover - unused
-        return None
 
 
 class StubMover:
@@ -78,14 +67,13 @@ def _make_runtime(name: str) -> AccountRuntime:
     trainer = StubTrainer()
     watcher = StubWatcher()
     categories = {
-        "Spam": CategoryConfig(name="Spam", flag=FolderFlag.SPAM),
-        "Inbox": CategoryConfig(name="Inbox", flag=FolderFlag.NEUTRAL),
+        "Spam": CategoryConfig(name="Spam"),
+        "Inbox": CategoryConfig(name="Inbox"),
     }
     return AccountRuntime(
         name=name,
         maildir=Path(f"/tmp/{name}"),
         rule_engine=StubRuleEngine(),
-        senders=StubSenders(),
         mover=StubMover(),
         trainer=trainer,
         watcher=watcher,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum
 from pathlib import Path
 
 
@@ -14,14 +14,6 @@ class Category(str, Enum):
     SPAM = "Spam"
     NEWSLETTERS = "Newsletters"
     IMPORTANT = "Important"
-
-
-class FolderFlag(Enum):
-    """Classification behaviour flags."""
-
-    HAM = auto()
-    SPAM = auto()
-    NEUTRAL = auto()
 
 
 @dataclass(frozen=True)
@@ -65,12 +57,10 @@ class CategoryConfig:
     """Per-category behaviour configuration."""
 
     name: str
-    flag: FolderFlag
 
 
 __all__ = [
     "Category",
-    "FolderFlag",
     "Features",
     "Prediction",
     "MaildirAccount",

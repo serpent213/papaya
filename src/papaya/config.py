@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from .types import CategoryConfig, FolderFlag, MaildirAccount
+from .types import CategoryConfig, MaildirAccount
 
 DEFAULT_CONFIG_PATH = Path("~/.config/papaya/config.yaml")
 DEFAULT_ROOT_DIR = Path("~/.local/lib/papaya")
@@ -163,26 +163,14 @@ def _parse_categories(value: Any) -> dict[str, CategoryConfig]:
 
     categories: dict[str, CategoryConfig] = {}
     for name, raw_cfg in value.items():
+        if raw_cfg is None:
+            categories[name] = CategoryConfig(name=name)
+            continue
         if not isinstance(raw_cfg, dict):
             raise ConfigError(f"Category '{name}' config must be a mapping.")
-        flag = _parse_flag(raw_cfg.get("flag"))
-        categories[name] = CategoryConfig(name=name, flag=flag)
+        override_name = raw_cfg.get("name") or name
+        categories[name] = CategoryConfig(name=str(override_name))
     return categories
-
-
-def _parse_flag(raw_flag: Any) -> FolderFlag:
-    if raw_flag is None:
-        return FolderFlag.NEUTRAL
-    if isinstance(raw_flag, FolderFlag):
-        return raw_flag
-    normalized = str(raw_flag).strip().lower()
-    if normalized == "ham":
-        return FolderFlag.HAM
-    if normalized == "spam":
-        return FolderFlag.SPAM
-    if normalized == "neutral":
-        return FolderFlag.NEUTRAL
-    raise ConfigError(f"Unknown folder flag: {raw_flag}")
 
 
 def _parse_logging(value: Any) -> LoggingConfig:
