@@ -3,6 +3,8 @@ from __future__ import annotations
 from email.message import EmailMessage
 from pathlib import Path
 
+from papaya.classifiers.naive_bayes import NaiveBayesClassifier
+from papaya.classifiers.tfidf_sgd import TfidfSgdClassifier
 from papaya.config import Config, LoggingConfig
 from papaya.modules import extract_features, naive_bayes, tfidf_sgd
 from papaya.modules.context import ModuleContext
@@ -76,8 +78,8 @@ def test_naive_bayes_module_trains_and_classifies(tmp_path):
     after = naive_bayes.classify(message, features, account="primary")
     assert after.category == Category.SPAM
 
-    model_path = ctx.store.model_path("naive_bayes", account="primary")
-    assert model_path.exists()
+    persisted = ctx.store.get("naive_bayes", account="primary")
+    assert isinstance(persisted, NaiveBayesClassifier)
 
     naive_bayes.cleanup()
 
@@ -94,7 +96,7 @@ def test_tfidf_sgd_module_trains_and_classifies(tmp_path):
     prediction = tfidf_sgd.classify(message, features, account="primary")
     assert prediction.category == Category.SPAM
 
-    model_path = ctx.store.model_path("tfidf_sgd", account="primary")
-    assert model_path.exists()
+    persisted = ctx.store.get("tfidf_sgd", account="primary")
+    assert isinstance(persisted, TfidfSgdClassifier)
 
     tfidf_sgd.cleanup()

@@ -55,7 +55,7 @@ def train(
     label = _coerce_category(category)
     model.train(features, label)
     if _STORE is not None:
-        _STORE.save_classifier(model, account=account)
+        _STORE.set("tfidf_sgd", model, account=account)
 
 
 def cleanup() -> None:
@@ -73,10 +73,11 @@ def _get_model(account: str | None) -> TfidfSgdClassifier:
 
 
 def _load_for_account(account: str) -> TfidfSgdClassifier:
-    model = TfidfSgdClassifier()
     if _STORE is not None and not _FRESH_MODELS:
-        _STORE.load_classifier(model, account=account)
-    return model
+        persisted = _STORE.get("tfidf_sgd", account=account)
+        if isinstance(persisted, TfidfSgdClassifier):
+            return persisted
+    return TfidfSgdClassifier()
 
 
 def _coerce_category(category: str | Category) -> Category:

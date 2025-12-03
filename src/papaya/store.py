@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
+import pickle
 import threading
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-from .classifiers.base import Classifier
 from .types import Category, Prediction
 
 LOGGER = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class Store:
     def __init__(self, root_dir: Path) -> None:
         self.root_dir = root_dir.expanduser()
         self.root_dir.mkdir(parents=True, exist_ok=True)
-        self._models_dir = self.root_dir / "models"
+        self._data_dir = self.root_dir / "data"
         self._trained_ids = TrainedIdRegistry(self.root_dir / "trained_ids.txt")
         self._prediction_logger = PredictionLogger(self.root_dir / "predictions.log")
 
@@ -35,34 +36,34 @@ class Store:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    def model_path(self, classifier_name: str, *, account: str | None = None) -> Path:
-        """Return the path where the classifier model should be stored."""
+    def get(self, key: str, *, account: str | None = None) -> Any | None:
+        """Load a pickled object by key. Returns None on missing or corrupt data."""
 
-        owner = account or GLOBAL_MODELS_DIRNAME
-        return self._models_dir / owner / f"{classifier_name}.pkl"
-
-    def save_classifier(self, classifier: Classifier, *, account: str | None = None) -> Path:
-        """Persist classifier state using atomic file replacement."""
-
-        target = self.model_path(classifier.name, account=account)
-        self._atomic_write(target, lambda tmp: classifier.save(tmp))
-        return target
-
-    def load_classifier(self, classifier: Classifier, *, account: str | None = None) -> bool:
-        """Load classifier state if present. Returns False on missing/corrupt models."""
-
-        path = self.model_path(classifier.name, account=account)
+        path = self._data_path(key, account=account)
         if not path.exists():
-            return False
+            return None
         try:
-            classifier.load(path)
+            with path.open("rb") as handle:
+                return pickle.load(handle)
         except Exception:  # pragma: no cover - defensive guard
+            owner = account or GLOBAL_MODELS_DIRNAME
             LOGGER.warning(
-                "Failed to load classifier '%s' from %s", classifier.name, path, exc_info=True
+                "Failed to load key '%s' for '%s' from %s", key, owner, path, exc_info=True
             )
             self._quarantine_corrupt_file(path)
-            return False
-        return True
+            return None
+
+    def set(self, key: str, value: Any, *, account: str | None = None) -> Path:
+        """Persist a Python object using atomic pickle writes."""
+
+        target = self._data_path(key, account=account)
+
+        def _write(tmp_path: Path) -> None:
+            with tmp_path.open("wb") as handle:
+                pickle.dump(value, handle)
+
+        self._atomic_write(target, _write)
+        return target
 
     def log_predictions(
         self,
@@ -119,6 +120,10 @@ class Store:
             counter += 1
             candidate = path.with_name(f"{path.name}{suffix}{counter}")
         path.replace(candidate)
+
+    def _data_path(self, key: str, *, account: str | None = None) -> Path:
+        owner = account or GLOBAL_MODELS_DIRNAME
+        return self._data_dir / owner / f"{key}.pkl"
 
 
 class TrainedIdRegistry:

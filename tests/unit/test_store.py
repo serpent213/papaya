@@ -2,79 +2,50 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from papaya.store import PredictionLogger, PredictionRecord, Store, TrainedIdRegistry
 from papaya.types import Category, Prediction
 
 
-class DummyClassifier:
-    def __init__(self) -> None:
-        self.name = "dummy"
-        self.payload: dict[str, str] = {}
-        self.loaded = False
+def test_set_and_get_roundtrip(tmp_path):
+    store = Store(tmp_path / "state")
+    payload = {"value": 42}
 
-    def train(self, *_args, **_kwargs) -> None:
-        raise NotImplementedError
+    path = store.set("dummy", payload, account="personal")
 
-    def predict(self, *_args, **_kwargs) -> Prediction:
-        raise NotImplementedError
-
-    def save(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self.payload), encoding="utf-8")
-
-    def load(self, path: Path) -> None:
-        contents = path.read_text(encoding="utf-8")
-        self.payload = json.loads(contents)
-        self.loaded = True
-
-    def is_trained(self) -> bool:
-        return self.loaded
+    assert path == tmp_path / "state" / "data" / "personal" / "dummy.pkl"
+    restored = store.get("dummy", account="personal")
+    assert restored == payload
 
 
-def test_model_path_separates_accounts(tmp_path):
+def test_get_returns_none_for_missing_key(tmp_path):
     store = Store(tmp_path / "state")
 
-    personal = store.model_path("naive_bayes", account="personal")
-    global_path = store.model_path("tfidf_sgd")
-
-    assert personal == tmp_path / "state" / "models" / "personal" / "naive_bayes.pkl"
-    assert global_path == tmp_path / "state" / "models" / "global" / "tfidf_sgd.pkl"
+    assert store.get("missing") is None
+    assert store.get("missing", account="any") is None
 
 
-def test_save_and_load_classifier_roundtrip(tmp_path):
+def test_corrupt_pickle_is_quarantined(tmp_path):
     store = Store(tmp_path / "state")
-    classifier = DummyClassifier()
-    classifier.payload = {"value": "42"}
+    path = store.set("dummy", {"value": 1}, account="personal")
+    path.write_text("not pickle", encoding="utf-8")
 
-    store.save_classifier(classifier, account="personal")
+    restored = store.get("dummy", account="personal")
 
-    restored = DummyClassifier()
-    assert store.load_classifier(restored, account="personal") is True
-    assert restored.payload == {"value": "42"}
-
-
-def test_load_classifier_handles_missing_model(tmp_path):
-    store = Store(tmp_path / "state")
-    classifier = DummyClassifier()
-
-    assert store.load_classifier(classifier, account="missing") is False
-
-
-def test_corrupt_model_is_quarantined(tmp_path):
-    store = Store(tmp_path / "state")
-    model_path = store.model_path("dummy", account="personal")
-    model_path.parent.mkdir(parents=True, exist_ok=True)
-    model_path.write_text("not json", encoding="utf-8")
-
-    classifier = DummyClassifier()
-    loaded = store.load_classifier(classifier, account="personal")
-
-    assert loaded is False
-    assert not model_path.exists()
-    quarantine_files = list(model_path.parent.glob("dummy.pkl.corrupt*"))
+    assert restored is None
+    assert not path.exists()
+    quarantine_files = list(path.parent.glob("dummy.pkl.corrupt*"))
     assert len(quarantine_files) == 1
+
+
+def test_account_namespaces_are_separate(tmp_path):
+    store = Store(tmp_path / "state")
+
+    store.set("dummy", {"value": "personal"}, account="personal")
+    store.set("dummy", {"value": "global"})
+
+    assert store.get("dummy", account="personal") == {"value": "personal"}
+    assert store.get("dummy") == {"value": "global"}
 
 
 def test_trained_id_registry_persists(tmp_path):
