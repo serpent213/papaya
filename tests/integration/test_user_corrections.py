@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Iterable
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from watchdog.observers.polling import PollingObserver
@@ -31,17 +33,22 @@ from tests.integration.conftest import (
 )
 
 CLASSIFY_RULES = """
-features = modules.extract_features.classify(message)
-bayes = modules.naive_bayes.classify(message, features, account)
-if bayes.category and bayes.category.value == "Spam" and bayes.confidence >= 0.55:
-    move_to("Spam", confidence=bayes.confidence)
+remembered = modules.match_from.classify(message, None, account)
+if remembered:
+    move_to(remembered, confidence=1.0)
 else:
-    skip()
+    features = modules.extract_features.classify(message)
+    bayes = modules.naive_bayes.classify(message, features, account)
+    if bayes.category and bayes.category.value == "Spam" and bayes.confidence >= 0.55:
+        move_to("Spam", confidence=bayes.confidence)
+    else:
+        skip()
 """
 
 TRAIN_RULES = """
 features = modules.extract_features.classify(message)
 modules.naive_bayes.train(message, features, category, account)
+modules.match_from.train(message, features, category, account)
 """
 
 MODULES_PATH = Path(__file__).resolve().parents[2] / "src" / "papaya" / "modules"
@@ -202,7 +209,19 @@ def test_learning_from_user_corrections(tmp_path: Path, corpus_dir: Path) -> Non
         correction_record = training_events.events[-1]
         assert correction_record["category"] == "Important"
         assert correction_record["message_id"] == correction_id
-        assert not has_keyword_flag(correction_record["path"].name, "p")
+        trained_path = correction_record["path"]
+        assert isinstance(trained_path, Path)
+        assert not has_keyword_flag(trained_path.name, "p")
+
+        replay_source, replay_message_id = _clone_message_with_new_id(trained_path, tmp_path)
+        copy_to_maildir(replay_source, maildir / "new")
+
+        expected_event_count = len(classification_events.events) + 1
+        assert classification_events.wait_for(expected_event_count, timeout=15.0)
+        replay_event = classification_events.events[-1]
+        assert replay_event["message_id"] == replay_message_id
+        assert replay_event["action"] == "category"
+        assert replay_event["category"] == "Important"
     finally:
         runtime.stop()
         loader.call_cleanup()
@@ -310,3 +329,19 @@ def _move_message_to_category(path: Path, maildir: Path, *, category: str) -> Pa
     destination_dir.mkdir(parents=True, exist_ok=True)
     target = destination_dir / path.name
     return Path(path).replace(target)
+
+
+def _clone_message_with_new_id(source: Path, tmp_dir: Path) -> tuple[Path, str]:
+    payload = source.read_text(encoding="utf-8")
+    new_message_id = f"<match-from-replay-{uuid4().hex}@example.com>"
+    updated, replacements = re.subn(
+        r"(?im)^Message-ID:\s*.*$",
+        f"Message-ID: {new_message_id}",
+        payload,
+        count=1,
+    )
+    if replacements == 0:
+        updated = f"Message-ID: {new_message_id}\n{payload}"
+    target = tmp_dir / f"replay-{uuid4().hex}.eml"
+    target.write_text(updated, encoding="utf-8")
+    return target, new_message_id
