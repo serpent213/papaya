@@ -127,6 +127,7 @@ def cleanup() -> None:
 | Module | Purpose |
 |--------|---------|
 | `extract_features` | Stateless feature extraction from emails |
+| `match_from` | Remembers sender/category pairs per account to bypass ML |
 | `naive_bayes` | Multinomial Naive Bayes classifier |
 | `tfidf_sgd` | TF-IDF vectorisation + SGD classifier |
 
@@ -158,13 +159,16 @@ Compiles and executes two types of rules:
 **Example classification rule:**
 
 ```python
-features = modules.extract_features.classify(message)
-bayes = modules.naive_bayes.classify(message, features, account)
-
-if bayes.scores.get("Spam", 0) > 0.85:
-    move_to("Spam", confidence=bayes.scores["Spam"])
-elif features.has_list_unsubscribe:
-    move_to("Newsletters", confidence=0.8)
+known_category = modules.match_from.classify(message, None, account)
+if known_category:
+    move_to(known_category)
+else:
+    features = modules.extract_features.classify(message)
+    prediction = modules.naive_bayes.classify(message, features, account)
+    if prediction.category and prediction.confidence >= 0.55:
+        move_to(prediction.category.value, confidence=prediction.confidence)
+    else:
+        skip()
 ```
 
 **Rule hierarchy:**
@@ -195,7 +199,6 @@ class AccountRuntime:
     name: str
     maildir: Path
     rule_engine: RuleEngine
-    senders: SenderLists
     mover: MailMover
     trainer: Trainer
     watcher: MaildirWatcher
@@ -214,15 +217,12 @@ class AccountRuntime:
 ```
 1. Watcher detects file in {maildir}/new/
 2. Read and parse email
-3. Check sender shortcuts:
-   - Blacklisted → move to Spam (skip ML)
-   - Whitelisted → keep in inbox (skip ML)
-4. Execute classification rules
-5. Apply decision:
+3. Execute classification rules (typically: match_from lookup → feature extraction → ML)
+4. Apply decision:
    - move_to(category) → mover.move_to_category(add_papaya_flag=True)
    - inbox → mover.move_to_inbox()
-6. Record in AutoClassificationCache (5-minute TTL)
-7. Update metrics
+5. Record in AutoClassificationCache (5-minute TTL)
+6. Update metrics
 ```
 
 ### User Sorting (Training)
@@ -233,9 +233,9 @@ class AccountRuntime:
    - If hit → skip (daemon just moved this)
 3. Check Papaya flag in filename:
    - If present → strip flag (user correction)
-4. Apply sender flag (update whitelist/blacklist)
+4. Resolve category + read message contents
 5. Check duplicate training (trained_ids)
-6. Execute training rules
+6. Execute training rules (e.g., naive_bayes.train, match_from.train)
 7. Record trained message ID
 ```
 
@@ -324,15 +324,13 @@ Allocates a letter (a-z) for `$PapayaSorted` on startup.
 
 ```
 ~/.local/lib/papaya/
-├── models/
+├── data/
 │   ├── global/
-│   │   └── naive_bayes.pkl
+│   │   └── tfidf_sgd.pkl
 │   └── {account}/
+│       ├── match_from.pkl
 │       ├── naive_bayes.pkl
 │       └── tfidf_sgd.pkl
-├── {account}/
-│   ├── whitelist.txt
-│   └── blacklist.txt
 ├── trained_ids.txt
 ├── predictions.log
 └── papaya.pid
@@ -342,10 +340,10 @@ Allocates a letter (a-z) for `$PapayaSorted` on startup.
 
 | Component | Purpose |
 |-----------|---------|
-| `Store` | Root manager, classifier save/load |
+| `Store` | Root manager with atomic pickled key/value storage |
 | `TrainedIdRegistry` | Append-only file tracking trained messages |
 | `PredictionLogger` | JSON-lines prediction log with rotation |
-| `SenderLists` | Per-account whitelist/blacklist files |
+| `match_from` module | Persists per-account sender/category sets via the store |
 
 ---
 
@@ -366,23 +364,27 @@ maildirs:
       # Python snippet
 
 rules: |               # Global classification rules
-  features = modules.extract_features.classify(message)
-  bayes = modules.naive_bayes.classify(message, features, account)
-  if bayes.scores.get("Spam", 0) > 0.85:
-      move_to("Spam")
+  known_category = modules.match_from.classify(message, None, account)
+  if known_category:
+      move_to(known_category)
+  else:
+      features = modules.extract_features.classify(message)
+      prediction = modules.naive_bayes.classify(message, features, account)
+      if prediction.category and prediction.confidence >= 0.55:
+          move_to(prediction.category.value, confidence=prediction.confidence)
+      else:
+          skip()
 
 train_rules: |         # Global training rules
   features = modules.extract_features.classify(message)
   modules.naive_bayes.train(message, features, category, account)
   modules.tfidf_sgd.train(message, features, category, account)
+  modules.match_from.train(message, features, category, account)
 
 categories:
-  Spam:
-    flag: spam         # Blacklist senders
-  Newsletters:
-    flag: neutral      # ML only
-  Important:
-    flag: ham          # Whitelist senders
+  Spam: {}
+  Newsletters: {}
+  Important: {}
 
 logging:
   level: info
@@ -407,7 +409,7 @@ papaya train [--full] [-a ACCOUNT]
 **Thread-safe components:**
 - `AutoClassificationCache` — lock around TTL cache
 - `TrainedIdRegistry` — lock around file + memory state
-- `SenderLists` — lock around cache + file writes
+- `match_from` module — lock around per-account sender caches
 - `PredictionLogger` — lock around rotation + append
 
 **Single-threaded by design:**

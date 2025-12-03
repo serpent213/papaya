@@ -1,13 +1,13 @@
 Papaya Spam Eater
 ==================
 
-Papaya is an on-device daemon that keeps local Maildir inboxes clean. It watches configured accounts, extracts lightweight features from each message, and routes spam, newsletters, and ham via a rule engine that orchestrates pluggable ML modules plus dynamic sender allow/deny lists.
+Papaya is an on-device daemon that keeps local Maildir inboxes clean. It watches configured accounts, extracts lightweight features from each message, and routes spam, newsletters, and ham via a rule engine that orchestrates pluggable ML modules plus a `match_from` sender-memory module.
 
 ## Highlights
 
 - 🧠 **Rule-driven automation** – Python snippets embedded in config files coordinate module calls, sender shortcuts, and routing decisions.
 - 🔌 **Hot-reloadable modules** – Built-in and user modules expose classify/train hooks with persisted state managed through the store.
-- 📚 **Sender intelligence** – Ham/spam folder flags maintain per-account whitelists and blacklists to bypass ML when possible.
+- 📚 **Sender memory** – The `match_from` module remembers per-account sender/category pairs so known newsletters or VIPs skip ML entirely.
 - 🔁 **Continuous learning** – Every user correction triggers immediate training through `train_rules`; module state is persisted incrementally.
 - 🛠 **Modern CLI** – Typer-based commands for daemon control, manual classification, and bulk training.
 - 🔁 **Runtime control** – Foreground/background modes with PID management, SIGHUP config reloads, and SIGUSR1 status dumps.
@@ -38,34 +38,37 @@ maildirs:
   - name: personal
     path: /var/vmail/example.com/personal
 rules: |
-  features = modules.extract_features.classify(message)
-  bayes = modules.naive_bayes.classify(message, features, account)
+  known_category = modules.match_from.classify(message, None, account)
+  if known_category:
+      move_to(known_category)
+  else:
+      features = modules.extract_features.classify(message)
+      prediction = modules.naive_bayes.classify(message, features, account)
 
-  if bayes.scores.get("Spam", 0) > 0.85:
-      move_to("Spam", confidence=bayes.scores["Spam"])
-  if features.has_list_unsubscribe:
-      move_to("Newsletters", confidence=0.8)
+      if prediction.category and prediction.confidence >= 0.55:
+          move_to(prediction.category.value, confidence=prediction.confidence)
+      else:
+          skip()
 
 train_rules: |
   features = modules.extract_features.classify(message)
   modules.naive_bayes.train(message, features, category, account)
   modules.tfidf_sgd.train(message, features, category, account)
+  modules.match_from.train(message, features, category, account)
+
 categories:
-  Spam:
-    flag: spam
-  Newsletters:
-    flag: neutral
-  Important:
-    flag: ham
+  Spam: {}
+  Newsletters: {}
+  Important: {}
 logging:
   level: info
   debug_file: false
 ```
 
-- `root_dir` stores models, sender lists, logs, and PID files.
+- `root_dir` stores classifier models, the `match_from` cache, logs, and the PID file.
 - `module_paths` optionally append user module directories that override the built-ins.
-- `rules` and `train_rules` define the classification/train flows; per-account overrides live under each `maildirs` entry.
-- `categories` map folders to behaviours via `flag` (`ham`, `spam`, or `neutral`).
+- `rules` and `train_rules` define the classification/train flows; per-account overrides live under each `maildirs` entry. The defaults check `match_from` before invoking ML.
+- `categories` list the Maildir folders Papaya should watch/train; keys must match the on-disk directory names.
 
 ## Running the Daemon
 
