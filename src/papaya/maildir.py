@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from email import policy
 from email.message import EmailMessage
@@ -9,6 +10,8 @@ from email.parser import BytesParser
 from pathlib import Path
 
 from .types import Category
+
+LOGGER = logging.getLogger(__name__)
 
 MAILDIR_SUBDIRS = ("cur", "new", "tmp")
 CATEGORY_PREFIX = "."
@@ -22,9 +25,9 @@ def ensure_maildir_structure(maildir: Path, categories: Iterable[str | Category]
     """Ensure required inbox and category subdirectories exist."""
 
     root = maildir.expanduser()
-    root.mkdir(parents=True, exist_ok=True)
+    _ensure_dir(root)
     for subdir in MAILDIR_SUBDIRS:
-        (root / subdir).mkdir(parents=True, exist_ok=True)
+        _ensure_dir(root / subdir)
 
     seen: set[str] = set()
     for category in categories:
@@ -33,7 +36,7 @@ def ensure_maildir_structure(maildir: Path, categories: Iterable[str | Category]
             continue
         seen.add(normalized)
         for subdir in MAILDIR_SUBDIRS:
-            category_subdir(root, normalized, subdir).mkdir(parents=True, exist_ok=True)
+            _ensure_dir(category_subdir(root, normalized, subdir))
 
 
 def inbox_new_dir(maildir: Path) -> Path:
@@ -198,6 +201,16 @@ def _is_under(path: Path, directory: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _ensure_dir(path: Path) -> None:
+    """Create a directory tree and log when it did not already exist."""
+
+    try:
+        path.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        return
+    LOGGER.info("Created maildir folder %s", path)
 
 
 __all__ = [
