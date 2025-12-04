@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from papaya.config import ConfigError, load_config
+from papaya.config import DEFAULT_RULE_BLOCK, DEFAULT_TRAIN_BLOCK, ConfigError, load_config
 
 
 def _write_config(tmp_path: Path, content: str) -> Path:
@@ -25,14 +25,14 @@ def test_load_config_success(tmp_path: Path) -> None:
           - ~/custom/papaya
         rules: |
           skip()
-        train_rules: |
+        train: |
           pass
         maildirs:
           - name: personal
             path: {maildir}
             rules: |
               fallback()
-            train_rules: |
+            train: |
               pass
         categories:
           Spam: {{}}
@@ -49,19 +49,16 @@ def test_load_config_success(tmp_path: Path) -> None:
     assert config.maildirs[0].rules is not None
     assert config.module_paths == [Path("~/custom/papaya").expanduser()]
     assert "skip()" in config.rules
-    assert "pass" in config.train_rules
+    assert "pass" in config.train
     assert config.categories["Spam"].name == "Spam"
     assert config.logging.debug_file is True
+    assert config.maildirs[0].train is not None
 
 
 def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config_path = _write_config(
         tmp_path,
         """
-        rules: |
-          pass
-        train_rules: |
-          pass
         maildirs:
           - name: inbox
             path: ~/Maildir
@@ -73,6 +70,8 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     monkeypatch.setenv("PAPAYA_CONFIG", str(config_path))
     config = load_config()
     assert config.maildirs[0].name == "inbox"
+    assert config.rules == DEFAULT_RULE_BLOCK
+    assert config.train == DEFAULT_TRAIN_BLOCK
 
 
 @pytest.mark.parametrize(
@@ -93,32 +92,6 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
         (
             """
             rules: |
-              pass
-            train_rules: |
-              pass
-            maildirs:
-              - name: inbox
-                path: ~/Maildir
-            categories:
-              Spam: []
-            """,
-            "Category 'Spam' config must be a mapping",
-        ),
-        (
-            """
-            train_rules: |
-              pass
-            maildirs:
-              - name: inbox
-                path: ~/Maildir
-            categories:
-              Spam: {}
-            """,
-            "rules must be provided",
-        ),
-        (
-            """
-            rules: |
             train_rules: |
               pass
             maildirs:
@@ -133,8 +106,6 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
             """
             rules: |
               pass
-            train_rules: |
-              pass
             maildirs:
               - name: inbox
                 path: ~/Maildir
@@ -148,12 +119,66 @@ def test_load_config_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
             """
             rules: |
               pass
-            train_rules: |
+            maildirs:
+              - name: inbox
+                path: ~/Maildir
+            categories:
+              Spam: []
+            """,
+            "Category 'Spam' config must be a mapping",
+        ),
+        (
+            """
+            rules: |
               pass
             categories:
               Spam: {}
             """,
             "At least one maildir must be configured",
+        ),
+        (
+            """
+            rules: |
+              pass
+            train: |
+            maildirs:
+              - name: inbox
+                path: ~/Maildir
+            categories:
+              Spam: {}
+            """,
+            "train cannot be empty",
+        ),
+        (
+            """
+            rules: |
+              pass
+            train: |
+              pass
+            train_rules: |
+              pass
+            maildirs:
+              - name: inbox
+                path: ~/Maildir
+            categories:
+              Spam: {}
+            """,
+            "Configuration cannot define both 'train' and 'train_rules'",
+        ),
+        (
+            """
+            rules: |
+              pass
+            maildirs:
+              - name: inbox
+                path: ~/Maildir
+                train: |
+                train_rules: |
+                  pass
+            categories:
+              Spam: {}
+            """,
+            "maildirs[1] cannot define both 'train' and 'train_rules'",
         ),
     ],
 )

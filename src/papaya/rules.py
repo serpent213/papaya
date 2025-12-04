@@ -65,20 +65,20 @@ class RuleEngine:
         loader: ModuleLoader,
         store: Store,
         global_rules: str,
-        global_train_rules: str,
+        global_train: str,
     ) -> None:
         self._loader = loader
         self._store = store
         self._global_rules = self._compile(global_rules, "<global_rules>")
-        self._global_train_rules = self._compile(global_train_rules, "<global_train_rules>")
+        self._global_train = self._compile(global_train, "<global_train>")
         self._account_rules: dict[str, CodeType] = {}
-        self._account_train_rules: dict[str, CodeType] = {}
+        self._account_train: dict[str, CodeType] = {}
 
     def set_account_rules(
         self,
         account: str,
         rules: str | None,
-        train_rules: str | None,
+        train: str | None,
     ) -> None:
         """Compile and cache account-specific rules."""
 
@@ -87,12 +87,10 @@ class RuleEngine:
         elif account in self._account_rules:
             self._account_rules.pop(account, None)
 
-        if train_rules is not None:
-            self._account_train_rules[account] = self._compile(
-                train_rules, f"<{account}_train_rules>"
-            )
-        elif account in self._account_train_rules:
-            self._account_train_rules.pop(account, None)
+        if train is not None:
+            self._account_train[account] = self._compile(train, f"<{account}_train>")
+        elif account in self._account_train:
+            self._account_train.pop(account, None)
 
     def execute_classify(
         self,
@@ -122,11 +120,11 @@ class RuleEngine:
         """Run training rules for a single account."""
 
         namespace = self._build_train_namespace(message, account, category)
-        account_rules = self._account_train_rules.get(account)
+        account_rules = self._account_train.get(account)
         if account_rules is not None:
-            self._exec_safe(account_rules, namespace, f"{account}_train_rules")
+            self._exec_safe(account_rules, namespace, f"{account}_train")
             return
-        self._exec_safe(self._global_train_rules, namespace, "global_train_rules")
+        self._exec_safe(self._global_train, namespace, "global_train")
 
     def _build_classify_namespace(
         self,

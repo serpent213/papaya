@@ -3,6 +3,25 @@
 
 root_dir: ~/.local/lib/papaya
 
+rules: |
+  known_category = modules.match_from.classify(message, None, account)
+  if known_category:
+      move_to(known_category)
+  else:
+      features = modules.extract_features.classify(message)
+      prediction = modules.naive_bayes.classify(message, features, account)
+
+      if prediction.category and prediction.confidence >= 0.55:
+          move_to(prediction.category.value, confidence=prediction.confidence)
+      else:
+          skip()
+
+train: |
+  features = modules.extract_features.classify(message)
+  modules.naive_bayes.train(message, features, category, account)
+  modules.tfidf_sgd.train(message, features, category, account)
+  modules.match_from.train(message, features, category, account)
+
 module_paths:
   - ~/.config/papaya/modules
 
@@ -21,7 +40,7 @@ maildirs:
               move_to(prediction.category.value, confidence=prediction.confidence)
           else:
               skip()
-    train_rules: |
+    train: |
       features = modules.extract_features.classify(message)
       modules.naive_bayes.train(message, features, category, account)
       modules.tfidf_sgd.train(message, features, category, account)

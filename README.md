@@ -1,16 +1,18 @@
 Papaya Spam Eater
 ==================
 
-Papaya is an on-device daemon that keeps local Maildir inboxes clean. It watches configured accounts, extracts lightweight features from each message, and routes spam, newsletters, and ham via a rule engine that orchestrates pluggable ML modules plus a `match_from` sender-memory module.
+**Personal/small-scale post-SMTP mail sorter**
+
+Papaya watches maildirs on filesystem level, acting on incoming mail and sorting it into predefined folders. It acknowledges the need for a flexible design that invites change and regular optimisation by providing a combination of hot-pluggable extractor and classifier modules and global or per-account rulesets written in a Python-based DSL.
 
 ## Highlights
 
-- 🧠 **Rule-driven automation** – Python snippets embedded in config files coordinate module calls, sender shortcuts, and routing decisions.
-- 🔌 **Hot-reloadable modules** – Built-in and user modules expose classify/train hooks with persisted state managed through the store.
-- 📚 **Sender memory** – The `match_from` module remembers per-account sender/category pairs so known newsletters or VIPs skip ML entirely.
-- 🔁 **Continuous learning** – Every user correction triggers immediate training through `train_rules`; module state is persisted incrementally.
-- 🛠 **Modern CLI** – Typer-based commands for daemon control, manual classification, and bulk training.
-- 🔁 **Runtime control** – Foreground/background modes with PID management, SIGHUP config reloads, and SIGUSR1 status dumps.
+- **Rule-driven automation** – Python snippets embedded in config files coordinate module calls, sender shortcuts, and routing decisions.
+- **Hot-reloadable modules** – Built-in and user modules expose classify/train hooks with persisted state managed through the store.
+- **Sender memory** – The `match_from` module remembers per-account sender/category pairs so known newsletters or VIPs skip ML entirely.
+- **Continuous learning** – Every user correction triggers immediate training through the `train` block; module state is persisted incrementally.
+- **Modern CLI** – Typer-based commands for daemon control, manual classification, and bulk training.
+- **Runtime control** – Foreground/background modes with PID management, SIGHUP config reloads, and SIGUSR1 status dumps.
 
 ## Requirements
 
@@ -50,7 +52,7 @@ rules: |
       else:
           skip()
 
-train_rules: |
+train: |
   features = modules.extract_features.classify(message)
   modules.naive_bayes.train(message, features, category, account)
   modules.tfidf_sgd.train(message, features, category, account)
@@ -67,7 +69,7 @@ logging:
 
 - `root_dir` stores classifier models, the `match_from` cache, logs, and the PID file.
 - `module_paths` optionally append user module directories that override the built-ins.
-- `rules` and `train_rules` define the classification/train flows; per-account overrides live under each `maildirs` entry. The defaults check `match_from` before invoking ML.
+- `rules` and `train` define the classification/train flows; per-account overrides live under each `maildirs` entry. The defaults check `match_from` before invoking ML.
 - `categories` list the Maildir folders Papaya should watch/train; keys must match the on-disk directory names.
 
 ## Running the Daemon

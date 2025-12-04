@@ -443,9 +443,9 @@ def _initialise_rule_engine(
     loader.load_all()
     context = ModuleContext(config=config, store=store, fresh_models=fresh_models)
     loader.call_startup(context)
-    engine = RuleEngine(loader, store, config.rules, config.train_rules)
+    engine = RuleEngine(loader, store, config.rules, config.train)
     for account in config.maildirs:
-        engine.set_account_rules(account.name, account.rules, account.train_rules)
+        engine.set_account_rules(account.name, account.rules, account.train)
     return loader, engine
 
 

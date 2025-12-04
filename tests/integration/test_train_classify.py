@@ -174,7 +174,7 @@ def _build_config(maildir: Path, root_dir: Path) -> Config:
         logging=LoggingConfig(),
         module_paths=[MODULES_PATH],
         rules=CLASSIFY_RULES,
-        train_rules=TRAIN_RULES,
+        train=TRAIN_RULES,
     )
 
 

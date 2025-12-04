@@ -270,7 +270,7 @@ Mail appears in category folder (watcher event)
                                  │
                                  ▼
                     ┌───────────────────────┐
-                    │ Execute train_rules   │
+                    │ Execute train         │
                     │ (user sorted this)    │
                     └───────────────────────┘
 ```
@@ -360,7 +360,7 @@ maildirs:
     path: /var/vmail/example.com/user
     rules: |           # Optional account override
       # Python snippet
-    train_rules: |     # Optional training override
+    train: |           # Optional training override
       # Python snippet
 
 rules: |               # Global classification rules
@@ -375,7 +375,7 @@ rules: |               # Global classification rules
       else:
           skip()
 
-train_rules: |         # Global training rules
+train: |               # Global training rules
   features = modules.extract_features.classify(message)
   modules.naive_bayes.train(message, features, category, account)
   modules.tfidf_sgd.train(message, features, category, account)

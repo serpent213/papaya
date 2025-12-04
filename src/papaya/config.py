@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,9 +12,13 @@ import yaml
 
 from .types import CategoryConfig, MaildirAccount
 
+LOGGER = logging.getLogger(__name__)
+
 DEFAULT_CONFIG_PATH = Path("~/.config/papaya/config.yaml")
 DEFAULT_ROOT_DIR = Path("~/.local/lib/papaya")
 DEFAULT_LOG_LEVEL = "info"
+DEFAULT_RULE_BLOCK = "skip()"
+DEFAULT_TRAIN_BLOCK = "pass"
 
 
 class ConfigError(ValueError):
@@ -38,7 +43,7 @@ class Config:
     logging: LoggingConfig
     module_paths: list[Path]
     rules: str
-    train_rules: str
+    train: str
 
 
 def load_config(path: Path | str | None = None) -> Config:
@@ -72,17 +77,19 @@ def _parse_config(raw: dict[str, Any]) -> Config:
     categories = _parse_categories(raw.get("categories"))
     logging_config = _parse_logging(raw.get("logging"))
     module_paths = _parse_module_paths(raw.get("module_paths"))
-    rules = _parse_rule_block(raw.get("rules"), "rules")
-    train_rules = _parse_rule_block(raw.get("train_rules"), "train_rules")
-    return Config(
+    rules, has_global_rules = _parse_rule_block(raw.get("rules"), "rules", DEFAULT_RULE_BLOCK)
+    train = _parse_train_block(raw)
+    config = Config(
         root_dir=root_dir,
         maildirs=maildirs,
         categories=categories,
         logging=logging_config,
         module_paths=module_paths,
         rules=rules,
-        train_rules=train_rules,
+        train=train,
     )
+    _warn_if_maildir_rules_missing(config.maildirs, has_global_rules)
+    return config
 
 
 def _parse_maildirs(value: Any) -> list[MaildirAccount]:
@@ -102,15 +109,25 @@ def _parse_maildirs(value: Any) -> list[MaildirAccount]:
         if not name or not path:
             raise ConfigError(f"maildirs[{idx}] requires 'name' and 'path'.")
         account_rules = _parse_optional_rule_block(entry.get("rules"), f"maildirs[{idx}].rules")
-        account_train_rules = _parse_optional_rule_block(
-            entry.get("train_rules"), f"maildirs[{idx}].train_rules"
+        train_value = entry.get("train")
+        legacy_train_value = entry.get("train_rules")
+        if train_value is not None and legacy_train_value is not None:
+            raise ConfigError(f"maildirs[{idx}] cannot define both 'train' and 'train_rules'.")
+        if train_value is None and legacy_train_value is not None:
+            LOGGER.warning(
+                "Field 'train_rules' is deprecated in maildir '%s'; rename it to 'train'.",
+                name,
+            )
+        account_train = _parse_optional_rule_block(
+            train_value if train_value is not None else legacy_train_value,
+            f"maildirs[{idx}].train",
         )
         maildirs.append(
             MaildirAccount(
                 name=str(name),
                 path=Path(path).expanduser(),
                 rules=account_rules,
-                train_rules=account_train_rules,
+                train=account_train,
             )
         )
 
@@ -135,15 +152,15 @@ def _parse_module_paths(value: Any) -> list[Path]:
     return paths
 
 
-def _parse_rule_block(value: Any, field_name: str) -> str:
+def _parse_rule_block(value: Any, field_name: str, default: str) -> tuple[str, bool]:
     if value is None:
-        raise ConfigError(f"{field_name} must be provided.")
+        return default, False
     if not isinstance(value, str):
         raise ConfigError(f"{field_name} must be a string.")
     text = str(value)
     if not text.strip():
         raise ConfigError(f"{field_name} cannot be empty.")
-    return text
+    return text, True
 
 
 def _parse_optional_rule_block(value: Any, field_name: str) -> str | None:
@@ -155,6 +172,33 @@ def _parse_optional_rule_block(value: Any, field_name: str) -> str | None:
     if not text.strip():
         raise ConfigError(f"{field_name} cannot be empty.")
     return text
+
+
+def _parse_train_block(raw: dict[str, Any]) -> str:
+    train_value = raw.get("train")
+    legacy = raw.get("train_rules")
+    if train_value is not None and legacy is not None:
+        raise ConfigError("Configuration cannot define both 'train' and 'train_rules'.")
+    if train_value is None and legacy is not None:
+        LOGGER.warning("Field 'train_rules' is deprecated; rename it to 'train'.")
+    selected = train_value if train_value is not None else legacy
+    value, _ = _parse_rule_block(selected, "train", DEFAULT_TRAIN_BLOCK)
+    return value
+
+
+def _warn_if_maildir_rules_missing(
+    maildirs: list[MaildirAccount],
+    has_global_rules: bool,
+) -> None:
+    if not maildirs:
+        return
+    if has_global_rules:
+        return
+    if all(account.rules is None for account in maildirs):
+        LOGGER.warning(
+            "No classification rules configured. "
+            "Add a global 'rules' block or per-maildir 'rules' entries."
+        )
 
 
 def _parse_categories(value: Any) -> dict[str, CategoryConfig]:
@@ -188,4 +232,6 @@ __all__ = [
     "LoggingConfig",
     "ConfigError",
     "load_config",
+    "DEFAULT_RULE_BLOCK",
+    "DEFAULT_TRAIN_BLOCK",
 ]

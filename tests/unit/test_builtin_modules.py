@@ -21,7 +21,7 @@ def _build_context(tmp_path: Path) -> ModuleContext:
         logging=LoggingConfig(),
         module_paths=[],
         rules="pass",
-        train_rules="pass",
+        train="pass",
     )
     store = Store(config.root_dir)
     return ModuleContext(config=config, store=store)

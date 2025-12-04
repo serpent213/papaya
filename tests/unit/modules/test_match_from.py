@@ -108,7 +108,7 @@ def _build_context(
         logging=LoggingConfig(),
         module_paths=[],
         rules="pass",
-        train_rules="pass",
+        train="pass",
     )
     store = Store(config.root_dir)
     context = ModuleContext(config=config, store=store, fresh_models=fresh)

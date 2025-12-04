@@ -20,7 +20,7 @@ def _write_config(tmp_path: Path, maildir: Path, root_dir: Path | None = None) -
                 f"root_dir: {root}",
                 "rules: |",
                 "  pass",
-                "train_rules: |",
+                "train: |",
                 "  pass",
                 "maildirs:",
                 "  - name: personal",
