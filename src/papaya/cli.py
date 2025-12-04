@@ -270,7 +270,10 @@ def _state(ctx: typer.Context) -> CLIState:
 def _load_environment(state: CLIState) -> tuple[Config, Store]:
     config = _load_config(state.config_path)
     configure_logging(config.logging, config.root_dir)
-    store = Store(config.root_dir)
+    store = Store(
+        config.root_dir,
+        write_predictions_logfile=config.logging.write_predictions_logfile,
+    )
     return config, store
 
 
@@ -295,7 +298,10 @@ def _run_daemon_process(
 ) -> None:
     config = initial_config
     configure_logging(config.logging, config.root_dir)
-    store = Store(config.root_dir)
+    store = Store(
+        config.root_dir,
+        write_predictions_logfile=config.logging.write_predictions_logfile,
+    )
     module_loader, rule_engine = _initialise_rule_engine(config, store)
 
     def _build_accounts(
@@ -331,7 +337,10 @@ def _run_daemon_process(
                 config.root_dir,
                 new_config.root_dir,
             )
-            new_store = Store(new_config.root_dir)
+            new_store = Store(
+                new_config.root_dir,
+                write_predictions_logfile=new_config.logging.write_predictions_logfile,
+            )
         new_loader, new_rule_engine = _initialise_rule_engine(new_config, new_store)
         try:
             new_accounts = _build_accounts(

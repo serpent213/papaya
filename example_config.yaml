@@ -53,4 +53,5 @@ categories:
 
 logging:
   level: info
-  debug_file: false
+  write_debug_logfile: false
+  write_predictions_logfile: true

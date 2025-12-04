@@ -49,7 +49,7 @@ def configure_logging(logging_config: LoggingConfig, root_dir: Path) -> None:
     handlers.append(_build_file_handler(log_dir / MAIN_LOG_NAME, level=logging.INFO))
     handlers.append(_build_console_handler())
 
-    if logging_config.debug_file:
+    if logging_config.write_debug_logfile:
         debug_handler = _build_file_handler(log_dir / DEBUG_LOG_NAME, level=logging.DEBUG)
         handlers.append(debug_handler)
 

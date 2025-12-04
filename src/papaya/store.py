@@ -22,12 +22,22 @@ GLOBAL_MODELS_DIRNAME = "global"
 class Store:
     """High-level helper responsible for the on-disk state layout."""
 
-    def __init__(self, root_dir: Path) -> None:
+    def __init__(
+        self,
+        root_dir: Path,
+        *,
+        write_predictions_logfile: bool = True,
+    ) -> None:
         self.root_dir = root_dir.expanduser()
         self.root_dir.mkdir(parents=True, exist_ok=True)
         self._data_dir = self.root_dir / "data"
         self._trained_ids = TrainedIdRegistry(self.root_dir / "trained_ids.txt")
-        self._prediction_logger = PredictionLogger(self.root_dir / "predictions.log")
+        log_dir = self.root_dir / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self._prediction_log_path = log_dir / "predictions.log"
+        self._prediction_logger: PredictionLogger | None = None
+        if write_predictions_logfile:
+            self._prediction_logger = PredictionLogger(self._prediction_log_path)
 
     def account_dir(self, account: str) -> Path:
         """Return the base directory for a given account, creating it if needed."""
@@ -77,6 +87,8 @@ class Store:
     ) -> None:
         """Append classifier predictions for later analysis."""
 
+        if self._prediction_logger is None:
+            return
         timestamp = datetime.now(timezone.utc)
         for classifier_name, prediction in predictions.items():
             record = PredictionRecord.from_prediction(
@@ -97,7 +109,7 @@ class Store:
 
     @property
     def prediction_log_path(self) -> Path:
-        return self._prediction_logger.path
+        return self._prediction_log_path
 
     def _atomic_write(self, target: Path, writer: Callable[[Path], None]) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)

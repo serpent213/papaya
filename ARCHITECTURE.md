@@ -331,8 +331,11 @@ Allocates a letter (a-z) for `$PapayaSorted` on startup.
 │       ├── match_from.pkl
 │       ├── naive_bayes.pkl
 │       └── tfidf_sgd.pkl
+├── logs/
+│   ├── papaya.log
+│   ├── debug.log
+│   └── predictions.log
 ├── trained_ids.txt
-├── predictions.log
 └── papaya.pid
 ```
 
@@ -388,7 +391,8 @@ categories:
 
 logging:
   level: info
-  debug_file: false
+  write_debug_logfile: false
+  write_predictions_logfile: true
 ```
 
 ---

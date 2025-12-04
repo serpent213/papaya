@@ -38,7 +38,8 @@ def test_load_config_success(tmp_path: Path) -> None:
           Spam: {{}}
         logging:
           level: debug
-          debug_file: true
+          write_debug_logfile: true
+          write_predictions_logfile: false
         """,
     )
 
@@ -51,7 +52,8 @@ def test_load_config_success(tmp_path: Path) -> None:
     assert "skip()" in config.rules
     assert "pass" in config.train
     assert config.categories["Spam"].name == "Spam"
-    assert config.logging.debug_file is True
+    assert config.logging.write_debug_logfile is True
+    assert config.logging.write_predictions_logfile is False
     assert config.maildirs[0].train is not None
 
 
@@ -191,3 +193,64 @@ def test_load_config_validation_errors(
     with pytest.raises(ConfigError) as excinfo:
         load_config(config_path)
     assert expected_message in str(excinfo.value)
+
+
+def test_logging_write_debug_logfile_flag(tmp_path: Path) -> None:
+    maildir = tmp_path / "maildir"
+    maildir.mkdir()
+    config_path = _write_config(
+        tmp_path,
+        f"""
+        maildirs:
+          - name: inbox
+            path: {maildir}
+        categories:
+          Spam: {{}}
+        logging:
+          write_debug_logfile: true
+        """,
+    )
+
+    config = load_config(config_path)
+
+    assert config.logging.write_debug_logfile is True
+
+
+def test_logging_write_predictions_default_true(tmp_path: Path) -> None:
+    maildir = tmp_path / "maildir"
+    maildir.mkdir()
+    config_path = _write_config(
+        tmp_path,
+        f"""
+        maildirs:
+          - name: inbox
+            path: {maildir}
+        categories:
+          Spam: {{}}
+        """,
+    )
+
+    config = load_config(config_path)
+
+    assert config.logging.write_predictions_logfile is True
+
+
+def test_logging_legacy_debug_file_fallback(tmp_path: Path) -> None:
+    maildir = tmp_path / "maildir"
+    maildir.mkdir()
+    config_path = _write_config(
+        tmp_path,
+        f"""
+        maildirs:
+          - name: inbox
+            path: {maildir}
+        categories:
+          Spam: {{}}
+        logging:
+          debug_file: true
+        """,
+    )
+
+    config = load_config(config_path)
+
+    assert config.logging.write_debug_logfile is True

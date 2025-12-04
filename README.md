@@ -64,13 +64,15 @@ categories:
   Important: {}
 logging:
   level: info
-  debug_file: false
+  write_debug_logfile: false
+  write_predictions_logfile: true
 ```
 
 - `root_dir` stores classifier models, the `match_from` cache, logs, and the PID file.
 - `module_paths` optionally append user module directories that override the built-ins.
 - `rules` and `train` define the classification/train flows; per-account overrides live under each `maildirs` entry. The defaults check `match_from` before invoking ML.
 - `categories` list the Maildir folders Papaya should watch/train; keys must match the on-disk directory names.
+- `logging.write_debug_logfile` enables `logs/debug.log`, while `logging.write_predictions_logfile` controls the structured `logs/predictions.log`.
 
 ## Running the Daemon
 

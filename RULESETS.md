@@ -73,7 +73,9 @@ Classification rules run once per incoming message. Your job: call one of the ro
 | `move_to(category, confidence=1.0)` | function | Route to a category folder |
 | `skip()` | function | Deliver to inbox (no routing) |
 | `fallback()` | function | Defer to global rules (from account rules only) |
-| `log(classifier, prediction)` | function | Record a prediction for later analysis |
+| `log(*args)` / `log_d(*args)` | function | DEBUG-level log helper (alias) |
+| `log_i(*args)` | function | INFO-level log helper |
+| `log_p(classifier, prediction)` | function | Structured prediction log written to `logs/predictions.log` |
 
 ### Routing Functions
 
@@ -497,8 +499,8 @@ rules: |
   sgd = modules.tfidf_sgd.classify(message, features, account)
 
   # Log both predictions
-  log("naive_bayes", nb)
-  log("tfidf_sgd", sgd)
+  log_p("naive_bayes", nb)
+  log_p("tfidf_sgd", sgd)
 
   # Use Naive Bayes for routing
   if nb.category and nb.confidence >= 0.6:
@@ -507,7 +509,7 @@ rules: |
       skip()
 ```
 
-Logs go to `<root_dir>/predictions.log` in JSON-lines format.
+Logs go to `<root_dir>/logs/predictions.log` in JSON-lines format. Disable this file by setting `logging.write_predictions_logfile: false`.
 
 ### 10. Time-Based Rules
 
@@ -617,20 +619,20 @@ Shows what decision the rules would make without moving the file.
 ### 2. Check the Prediction Log
 
 ```bash
-tail -f ~/.local/lib/papaya/predictions.log | jq .
+tail -f ~/.local/lib/papaya/logs/predictions.log | jq .
 ```
 
-Each entry shows the message ID, classifier predictions, and final routing decision.
+Each entry shows the message ID, classifier predictions, and final routing decision. Toggle this via `logging.write_predictions_logfile`.
 
 ### 3. Enable Debug Logging
 
 ```yaml
 logging:
   level: debug
-  debug_file: true
+  write_debug_logfile: true
 ```
 
-Writes verbose logs to `<root_dir>/logs/papaya.log`.
+Writes verbose logs to `<root_dir>/logs/papaya.log` and enables `<root_dir>/logs/debug.log`.
 
 ### 4. Inspect Module State
 
@@ -673,7 +675,9 @@ modules      # ModuleNamespace: access to modules
 move_to(category, confidence=1.0)  # Route to folder
 skip()                              # Keep in inbox
 fallback()                          # Defer to global rules
-log(classifier, prediction)         # Record for analysis
+log()/log_d()                       # DEBUG-level log helper
+log_i()                             # INFO-level log helper
+log_p(classifier, prediction)       # Structured prediction log
 ```
 
 ### Training Namespace
@@ -683,6 +687,8 @@ message   # EmailMessage object
 account   # str: account name
 category  # str: destination folder name
 modules   # ModuleNamespace: access to modules
+log()/log_d()  # DEBUG-level log helper
+log_i()        # INFO-level log helper
 ```
 
 ### Module Methods

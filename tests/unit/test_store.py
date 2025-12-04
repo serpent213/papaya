@@ -104,6 +104,25 @@ def test_log_predictions_writes_json_lines(tmp_path):
     assert data["scores"]["Spam"] == 0.92
 
 
+def test_prediction_logging_can_be_disabled(tmp_path):
+    store = Store(tmp_path / "state", write_predictions_logfile=False)
+    prediction = Prediction(
+        category=Category.SPAM,
+        confidence=0.5,
+        scores={Category.SPAM: 0.5},
+    )
+
+    store.log_predictions("personal", "<id-2>", {"nb": prediction})
+
+    assert not store.prediction_log_path.exists()
+
+
+def test_predictions_log_in_logs_folder(tmp_path):
+    store = Store(tmp_path / "state")
+
+    assert store.prediction_log_path == tmp_path / "state" / "logs" / "predictions.log"
+
+
 def test_prediction_logger_rotates(tmp_path):
     logger = PredictionLogger(tmp_path / "predictions.log", max_bytes=50, backups=2)
     record = PredictionRecord(

@@ -137,6 +137,9 @@ class RuleEngine:
         from_address = _header_value(message, "From")
         subject = _header_value(message, "Subject", strip=False)
 
+        def _format_args(*args: object) -> str:
+            return " ".join(str(arg) for arg in args)
+
         def move_to(category: str, confidence: float = 1.0) -> None:
             namespace["_decision"] = RuleDecision(
                 action="move",
@@ -150,7 +153,17 @@ class RuleEngine:
         def fallback() -> None:
             namespace["_decision"] = RuleDecision(action="fallback")
 
-        def log(classifier: str, prediction: Prediction) -> None:
+        def log_d(*args: object) -> None:
+            if not args:
+                return
+            LOGGER.debug("[rules:%s] %s", account, _format_args(*args))
+
+        def log_i(*args: object) -> None:
+            if not args:
+                return
+            LOGGER.info("[rules:%s] %s", account, _format_args(*args))
+
+        def log_p(classifier: str, prediction: Prediction) -> None:
             if not classifier or prediction is None:
                 return
             try:
@@ -164,10 +177,9 @@ class RuleEngine:
                 )
             except Exception:  # pragma: no cover - logging should not break classification
                 LOGGER.exception(
-                    "Failed to log prediction for classifier '%s' (account=%s, message_id=%s)",
+                    "Failed to log prediction for '%s' (account=%s)",
                     classifier,
                     account,
-                    message_identifier,
                 )
 
         namespace.update(
@@ -179,7 +191,10 @@ class RuleEngine:
                 "move_to": move_to,
                 "skip": skip,
                 "fallback": fallback,
-                "log": log,
+                "log": log_d,
+                "log_d": log_d,
+                "log_i": log_i,
+                "log_p": log_p,
                 "_decision": None,
                 "__builtins__": __builtins__,
             }
@@ -192,11 +207,27 @@ class RuleEngine:
         account: str,
         category: str,
     ) -> dict[str, Any]:
+        def _format_args(*args: object) -> str:
+            return " ".join(str(arg) for arg in args)
+
+        def log_d(*args: object) -> None:
+            if not args:
+                return
+            LOGGER.debug("[rules:%s:train] %s", account, _format_args(*args))
+
+        def log_i(*args: object) -> None:
+            if not args:
+                return
+            LOGGER.info("[rules:%s:train] %s", account, _format_args(*args))
+
         return {
             "message": message,
             "account": account,
             "category": category,
             "modules": ModuleNamespace(self._loader),
+            "log": log_d,
+            "log_d": log_d,
+            "log_i": log_i,
             "__builtins__": __builtins__,
         }
 

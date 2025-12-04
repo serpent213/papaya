@@ -30,7 +30,8 @@ class LoggingConfig:
     """Logging-related configuration."""
 
     level: str = DEFAULT_LOG_LEVEL
-    debug_file: bool = False
+    write_debug_logfile: bool = False
+    write_predictions_logfile: bool = True
 
 
 @dataclass(frozen=True)
@@ -223,8 +224,18 @@ def _parse_logging(value: Any) -> LoggingConfig:
     if not isinstance(value, dict):
         raise ConfigError("logging must be a mapping.")
     level = str(value.get("level", DEFAULT_LOG_LEVEL)).lower()
-    debug_file = bool(value.get("debug_file", False))
-    return LoggingConfig(level=level, debug_file=debug_file)
+
+    write_debug = value.get("write_debug_logfile")
+    if write_debug is None:
+        write_debug = value.get("debug_file", False)
+
+    write_predictions = value.get("write_predictions_logfile", True)
+
+    return LoggingConfig(
+        level=level,
+        write_debug_logfile=bool(write_debug),
+        write_predictions_logfile=bool(write_predictions),
+    )
 
 
 __all__ = [

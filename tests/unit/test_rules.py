@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from email.message import EmailMessage
 from types import SimpleNamespace
 
@@ -125,13 +126,43 @@ def test_module_namespace_raises_attribute_error_for_missing_module() -> None:
         _ = namespace.missing  # noqa: B018 - access attribute to trigger error
 
 
-def test_log_helper_writes_predictions() -> None:
+def test_log_d_writes_debug(caplog: pytest.LogCaptureFixture) -> None:
+    loader = FakeLoader()
+    engine = RuleEngine(loader, FakeStore(), "log_d('checkpoint', 1)", "pass")
+
+    with caplog.at_level(logging.DEBUG, logger="papaya.rules"):
+        engine.execute_classify("personal", _message(), message_id="<msg-1>")
+
+    assert "[rules:personal] checkpoint 1" in caplog.text
+
+
+def test_log_i_writes_info(caplog: pytest.LogCaptureFixture) -> None:
+    loader = FakeLoader()
+    engine = RuleEngine(loader, FakeStore(), "log_i('classified', 'Spam')", "pass")
+
+    with caplog.at_level(logging.INFO, logger="papaya.rules"):
+        engine.execute_classify("personal", _message(), message_id="<msg-1>")
+
+    assert "[rules:personal] classified Spam" in caplog.text
+
+
+def test_log_is_alias_for_log_d(caplog: pytest.LogCaptureFixture) -> None:
+    loader = FakeLoader()
+    engine = RuleEngine(loader, FakeStore(), "log('alias works')", "pass")
+
+    with caplog.at_level(logging.DEBUG, logger="papaya.rules"):
+        engine.execute_classify("personal", _message(), message_id="<msg-1>")
+
+    assert "[rules:personal] alias works" in caplog.text
+
+
+def test_log_p_writes_predictions() -> None:
     loader = FakeLoader()
     store = FakeStore()
     rules = (
         "prediction = type('Pred', (), {'category': 'Spam', 'confidence': 0.8, "
         "'scores': {'Spam': 0.8}})()\n"
-        "log('naive_bayes', prediction)\n"
+        "log_p('naive_bayes', prediction)\n"
     )
     engine = RuleEngine(loader, store, rules, "pass")
 
@@ -145,3 +176,29 @@ def test_log_helper_writes_predictions() -> None:
     assert kwargs["recipient"] == "personal"
     assert kwargs["from_address"] == "sender@example.com"
     assert kwargs["subject"] == "hi"
+
+
+def test_log_functions_in_train_namespace(caplog: pytest.LogCaptureFixture) -> None:
+    loader = FakeLoader()
+    engine = RuleEngine(
+        loader,
+        FakeStore(),
+        "skip()",
+        "log_d('train debug'); log_i('train info')",
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="papaya.rules"):
+        engine.execute_train("personal", _message(), "Spam")
+
+    assert "[rules:personal:train] train debug" in caplog.text
+    assert "[rules:personal:train] train info" in caplog.text
+
+
+def test_log_empty_args_noop(caplog: pytest.LogCaptureFixture) -> None:
+    loader = FakeLoader()
+    engine = RuleEngine(loader, FakeStore(), "log(); log_d(); log_i()", "pass")
+
+    with caplog.at_level(logging.DEBUG, logger="papaya.rules"):
+        engine.execute_classify("personal", _message(), message_id="<msg-1>")
+
+    assert caplog.records == []
