@@ -21,7 +21,7 @@ typecheck:
 # Execute pytest suite (all by default, filtered variants available)
 test kind="all":
     @case "{{kind}}" in \
-        all) uv run pytest ;; \
+        all) uv run pytest tests/unit tests/integration ;; \
         unit) uv run pytest tests/unit ;; \
         integration) uv run pytest tests/integration ;; \
         *) echo "Unknown test kind '{{kind}}'. Use all|unit|integration." >&2; exit 1 ;; \
