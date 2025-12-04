@@ -4,16 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
-
-
-class Category(str, Enum):
-    """Mail categories - extensible via config."""
-
-    SPAM = "Spam"
-    NEWSLETTERS = "Newsletters"
-    IMPORTANT = "Important"
 
 
 @dataclass(frozen=True)
@@ -37,9 +28,9 @@ class Features:
 class Prediction:
     """Classification result."""
 
-    category: Category | None
+    category: str | None
     confidence: float
-    scores: Mapping[Category, float]
+    scores: Mapping[str, float]
 
 
 @dataclass(frozen=True)
@@ -60,7 +51,6 @@ class CategoryConfig:
 
 
 __all__ = [
-    "Category",
     "Features",
     "Prediction",
     "MaildirAccount",

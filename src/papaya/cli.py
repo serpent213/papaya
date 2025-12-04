@@ -240,7 +240,7 @@ def train(
     if full:
         store.trained_ids.reset()
 
-    module_loader, rule_engine = _initialise_rule_engine(config, store, fresh_models=full)
+    module_loader, rule_engine = _initialise_rule_engine(config, store, reset_state=full)
     try:
         for acct in targets:
             trainer = Trainer(
@@ -446,11 +446,11 @@ def _initialise_rule_engine(
     config: Config,
     store: Store,
     *,
-    fresh_models: bool = False,
+    reset_state: bool = False,
 ) -> tuple[ModuleLoader, RuleEngine]:
     loader = ModuleLoader(_module_search_paths(config))
     loader.load_all()
-    context = ModuleContext(config=config, store=store, fresh_models=fresh_models)
+    context = ModuleContext(config=config, store=store, reset_state=reset_state)
     loader.call_startup(context)
     engine = RuleEngine(loader, store, config.rules, config.train)
     for account in config.maildirs:

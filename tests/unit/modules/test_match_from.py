@@ -111,7 +111,7 @@ def _build_context(
         train="pass",
     )
     store = Store(config.root_dir)
-    context = ModuleContext(config=config, store=store, fresh_models=fresh)
+    context = ModuleContext(config=config, store=store, reset_state=fresh)
     return context, store, account
 
 

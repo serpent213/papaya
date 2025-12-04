@@ -48,7 +48,7 @@ rules: |
       prediction = modules.naive_bayes.classify(message, features, account)
 
       if prediction.category and prediction.confidence >= 0.55:
-          move_to(prediction.category.value, confidence=prediction.confidence)
+          move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 
@@ -115,7 +115,7 @@ The status command inspects configured accounts, module state, PID liveness, and
 | `papaya daemon [-d]` | Run the daemon in foreground or background. |
 | `papaya status` | Show configuration summary and whether the daemon is running. |
 | `papaya classify path/to/message.eml [-a account]` | Execute the configured rules for a single message. |
-| `papaya train [--full] [-a account]` | Replay categorised mail for manual training; `--full` clears trained-ID cache first and reloads modules with fresh models. |
+| `papaya train [--full] [-a account]` | Replay categorised mail for manual training; `--full` clears trained-ID cache first and reloads modules with reset state. |
 
 ## Development
 

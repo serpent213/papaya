@@ -29,7 +29,7 @@ from tests.integration.conftest import (
 CLASSIFY_RULES = """
 features = modules.extract_features.classify(message)
 bayes = modules.naive_bayes.classify(message, features, account)
-if bayes.category and bayes.category.value == "Spam" and bayes.confidence >= 0.55:
+if bayes.category and bayes.category == "Spam" and bayes.confidence >= 0.55:
     move_to("Spam", confidence=bayes.confidence)
 else:
     skip()
@@ -131,10 +131,10 @@ def test_daemon_lifecycle(tmp_path: Path, corpus_dir: Path) -> None:
     config = _build_config(maildir, store.root_dir)
     loaders: list[ModuleLoader] = []
 
-    def _initialise_loader(*, fresh_models: bool) -> ModuleLoader:
+    def _initialise_loader(*, reset_state: bool) -> ModuleLoader:
         loader = ModuleLoader([MODULES_PATH])
         loader.load_all()
-        loader.call_startup(ModuleContext(config=config, store=store, fresh_models=fresh_models))
+        loader.call_startup(ModuleContext(config=config, store=store, reset_state=reset_state))
         loaders.append(loader)
         return loader
 
@@ -156,7 +156,7 @@ def test_daemon_lifecycle(tmp_path: Path, corpus_dir: Path) -> None:
 
     def reload_callback() -> tuple[list[AccountRuntime], bool]:
         nonlocal module_reload_count
-        new_loader = _initialise_loader(fresh_models=False)
+        new_loader = _initialise_loader(reset_state=False)
         module_reload_count += 1
         runtime = _build_runtime(new_loader)
         reload_complete.set()
@@ -166,7 +166,7 @@ def test_daemon_lifecycle(tmp_path: Path, corpus_dir: Path) -> None:
         status_calls.append(snapshots)
         return "status recorded"
 
-    initial_loader = _initialise_loader(fresh_models=True)
+    initial_loader = _initialise_loader(reset_state=True)
     initial_runtime = _build_runtime(initial_loader)
     daemon = DaemonRuntime(
         [initial_runtime],

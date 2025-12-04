@@ -166,7 +166,7 @@ else:
     features = modules.extract_features.classify(message)
     prediction = modules.naive_bayes.classify(message, features, account)
     if prediction.category and prediction.confidence >= 0.55:
-        move_to(prediction.category.value, confidence=prediction.confidence)
+        move_to(prediction.category, confidence=prediction.confidence)
     else:
         skip()
 ```
@@ -374,7 +374,7 @@ rules: |               # Global classification rules
       features = modules.extract_features.classify(message)
       prediction = modules.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.55:
-          move_to(prediction.category.value, confidence=prediction.confidence)
+          move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 

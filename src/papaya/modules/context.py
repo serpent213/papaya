@@ -16,7 +16,7 @@ class ModuleContext:
 
     config: Config
     store: Store
-    fresh_models: bool = False
+    reset_state: bool = False
 
 
 __all__ = ["ModuleContext"]

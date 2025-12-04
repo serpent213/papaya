@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from papaya.maildir import MaildirError, category_subdir, read_message
-from papaya.types import Category, Features
+from papaya.types import Features
 
 if TYPE_CHECKING:
     from papaya.modules.context import ModuleContext
@@ -35,7 +35,7 @@ def startup(ctx: ModuleContext) -> None:
     new_cache: dict[str, dict[str, set[str]]] = {}
     for account in ctx.config.maildirs:
         addresses = None
-        if not ctx.fresh_models:
+        if not ctx.reset_state:
             addresses = _load_account(account.name, category_names)
         if addresses is None:
             addresses = _scan_account(account.name, account.path, category_names)
@@ -73,7 +73,7 @@ def classify(
 def train(
     message: EmailMessage,
     features: Features | None,
-    category: str | Category,
+    category: str,
     account: str | None = None,
 ) -> None:
     """Record the sender/category relationship for future lookups."""
@@ -207,9 +207,7 @@ def _normalize_address(address: str | None) -> str | None:
     return normalized or None
 
 
-def _normalize_category(category: str | Category) -> str:
-    if isinstance(category, Category):
-        return category.value
+def _normalize_category(category: str) -> str:
     normalized = str(category).strip()
     if not normalized:
         raise ValueError("category cannot be empty")

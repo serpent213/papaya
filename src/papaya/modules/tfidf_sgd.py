@@ -6,7 +6,7 @@ from email.message import EmailMessage
 from typing import TYPE_CHECKING
 
 from papaya.classifiers.tfidf_sgd import TfidfSgdClassifier
-from papaya.types import Category, Features, Prediction
+from papaya.types import Features, Prediction
 
 if TYPE_CHECKING:
     from papaya.modules.context import ModuleContext
@@ -14,15 +14,17 @@ if TYPE_CHECKING:
 
 _MODELS: dict[str, TfidfSgdClassifier] = {}
 _STORE: Store | None = None
-_FRESH_MODELS: bool = False
+_RESET_STATE: bool = False
+_CATEGORIES: tuple[str, ...] = ()
 
 
 def startup(ctx: ModuleContext) -> None:
     """Initialise per-account TF-IDF models."""
 
-    global _STORE, _FRESH_MODELS
+    global _STORE, _RESET_STATE, _CATEGORIES
     _STORE = ctx.store
-    _FRESH_MODELS = ctx.fresh_models
+    _RESET_STATE = ctx.reset_state
+    _CATEGORIES = tuple(ctx.config.categories.keys())
     _MODELS.clear()
     for account in ctx.config.maildirs:
         _MODELS[account.name] = _load_for_account(account.name)
@@ -44,7 +46,7 @@ def classify(
 def train(
     message: EmailMessage,
     features: Features | None,
-    category: str | Category,
+    category: str,
     account: str | None = None,
 ) -> None:
     """Incrementally train the TF-IDF model and persist it."""
@@ -52,8 +54,7 @@ def train(
     model = _get_model(account)
     if features is None:
         raise ValueError("features must be provided to tfidf_sgd.train()")
-    label = _coerce_category(category)
-    model.train(features, label)
+    model.train(features, category)
     if _STORE is not None:
         _STORE.set("tfidf_sgd", model, account=account)
 
@@ -73,20 +74,11 @@ def _get_model(account: str | None) -> TfidfSgdClassifier:
 
 
 def _load_for_account(account: str) -> TfidfSgdClassifier:
-    if _STORE is not None and not _FRESH_MODELS:
+    if _STORE is not None and not _RESET_STATE:
         persisted = _STORE.get("tfidf_sgd", account=account)
         if isinstance(persisted, TfidfSgdClassifier):
             return persisted
-    return TfidfSgdClassifier()
-
-
-def _coerce_category(category: str | Category) -> Category:
-    if isinstance(category, Category):
-        return category
-    try:
-        return Category(category)
-    except ValueError as exc:  # pragma: no cover - defensive guard
-        raise ValueError(f"Unknown category '{category}'") from exc
+    return TfidfSgdClassifier(categories=_CATEGORIES or None)
 
 
 __all__ = ["startup", "classify", "train", "cleanup"]

@@ -14,7 +14,6 @@ from .maildir import (
     category_subdir,
     inbox_cur_dir,
 )
-from .types import Category
 
 LOGGER = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ class MailMover:
     def move_to_category(
         self,
         msg_path: Path,
-        category: str | Category,
+        category: str,
         *,
         add_papaya_flag: bool = True,
     ) -> Path:

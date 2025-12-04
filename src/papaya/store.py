@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .types import Category, Prediction
+from .types import Prediction
 
 LOGGER = logging.getLogger(__name__)
 GLOBAL_MODELS_DIRNAME = "global"
@@ -280,18 +280,8 @@ class PredictionRecord:
         subject: str | None = None,
     ) -> PredictionRecord:
         ts = timestamp or datetime.now(timezone.utc)
-        if isinstance(prediction.category, Category):
-            category = prediction.category.value
-        elif prediction.category is None:
-            category = None
-        else:
-            category = str(prediction.category)
-        scores = {
-            (
-                category_enum.value if isinstance(category_enum, Category) else str(category_enum)
-            ): score
-            for category_enum, score in prediction.scores.items()
-        }
+        category = prediction.category
+        scores = {str(category_name): score for category_name, score in prediction.scores.items()}
         return cls(
             timestamp=ts,
             account=account,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from ..types import Category, Features, Prediction
+from ..types import Features, Prediction
 
 
 @runtime_checkable
@@ -14,7 +14,7 @@ class Classifier(Protocol):
 
     name: str
 
-    def train(self, features: Features, label: Category) -> None:
+    def train(self, features: Features, label: str) -> None:
         """Incrementally train the classifier with a single sample."""
 
     def predict(self, features: Features) -> Prediction:

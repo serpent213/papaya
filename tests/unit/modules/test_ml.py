@@ -8,7 +8,7 @@ import pytest
 
 from papaya.modules import ml
 from papaya.modules.context import ModuleContext
-from papaya.types import Category, Prediction
+from papaya.types import Prediction
 
 
 class FakeStore:
@@ -29,9 +29,9 @@ def _message() -> EmailMessage:
 
 def _prediction() -> Prediction:
     return Prediction(
-        category=Category.SPAM,
+        category="Spam",
         confidence=0.9,
-        scores={Category.SPAM: 0.9},
+        scores={"Spam": 0.9},
     )
 
 

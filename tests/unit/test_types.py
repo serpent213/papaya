@@ -6,9 +6,10 @@ import pytest
 from papaya import types as papaya_types
 
 
-def test_category_enum_members() -> None:
-    assert papaya_types.Category.SPAM.value == "Spam"
-    assert papaya_types.Category.NEWSLETTERS.name == "NEWSLETTERS"
+def test_prediction_uses_strings() -> None:
+    prediction = papaya_types.Prediction(category="Spam", confidence=0.85, scores={"Spam": 0.85})
+    assert prediction.category == "Spam"
+    assert prediction.scores["Spam"] == pytest.approx(0.85)
 
 
 def test_features_is_immutable() -> None:

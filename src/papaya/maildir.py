@@ -9,8 +9,6 @@ from email.message import EmailMessage
 from email.parser import BytesParser
 from pathlib import Path
 
-from .types import Category
-
 LOGGER = logging.getLogger(__name__)
 
 MAILDIR_SUBDIRS = ("cur", "new", "tmp")
@@ -21,7 +19,7 @@ class MaildirError(RuntimeError):
     """Raised when maildir operations fail."""
 
 
-def ensure_maildir_structure(maildir: Path, categories: Iterable[str | Category]) -> None:
+def ensure_maildir_structure(maildir: Path, categories: Iterable[str]) -> None:
     """Ensure required inbox and category subdirectories exist."""
 
     root = maildir.expanduser()
@@ -51,14 +49,14 @@ def inbox_cur_dir(maildir: Path) -> Path:
     return maildir.expanduser() / "cur"
 
 
-def category_dir(maildir: Path, category: str | Category) -> Path:
+def category_dir(maildir: Path, category: str) -> Path:
     """Return the base directory for a category (e.g. /Maildir/.Spam)."""
 
     normalized = normalize_category_name(category)
     return maildir.expanduser() / f"{CATEGORY_PREFIX}{normalized}"
 
 
-def category_subdir(maildir: Path, category: str | Category, subdir: str) -> Path:
+def category_subdir(maildir: Path, category: str, subdir: str) -> Path:
     """Return a specific subdirectory inside a category."""
 
     normalized_subdir = subdir.strip("/")
@@ -120,13 +118,10 @@ def extract_message_id(path: Path) -> str | None:
     return stripped or None
 
 
-def normalize_category_name(category: str | Category) -> str:
+def normalize_category_name(category: str | None) -> str:
     """Return a normalised category name without leading prefix."""
 
-    if isinstance(category, Category):
-        raw = category.value
-    else:
-        raw = str(category)
+    raw = "" if category is None else str(category)
     normalized = raw.strip()
     if normalized.startswith(CATEGORY_PREFIX):
         normalized = normalized[len(CATEGORY_PREFIX) :]

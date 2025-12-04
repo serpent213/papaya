@@ -44,7 +44,7 @@ rules: |
   features = modules.extract_features.classify(message)
   prediction = modules.naive_bayes.classify(message, features, account)
   if prediction.confidence >= 0.7:
-      move_to(prediction.category.value, confidence=prediction.confidence)
+      move_to(prediction.category, confidence=prediction.confidence)
   else:
       skip()
 
@@ -190,9 +190,9 @@ Multinomial Naive Bayes classifier. Fast, interpretable, works well with small t
 
 ```python
 prediction = modules.naive_bayes.classify(message, features, account)
-# prediction.category    → Category enum or None
+# prediction.category    → category name (str) or None
 # prediction.confidence  → float 0.0–1.0
-# prediction.scores      → dict mapping Category → score
+# prediction.scores      → dict mapping category name → score
 ```
 
 **Training:**
@@ -259,26 +259,9 @@ Classification result from ML modules:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `category` | `Category \| None` | Predicted category, or None if untrained |
+| `category` | `str \| None` | Predicted category, or None if untrained |
 | `confidence` | `float` | Confidence score (0.0–1.0) |
-| `scores` | `Mapping[Category, float]` | Per-category scores |
-
-### `Category`
-
-Enum of known categories:
-
-```python
-Category.SPAM         # "Spam"
-Category.NEWSLETTERS  # "Newsletters"
-Category.IMPORTANT    # "Important"
-```
-
-Access the string value with `.value`:
-
-```python
-if prediction.category:
-    move_to(prediction.category.value)
-```
+| `scores` | `Mapping[str, float]` | Per-category scores keyed by name |
 
 ---
 
@@ -340,7 +323,7 @@ rules: |
       features = modules.extract_features.classify(message)
       prediction = modules.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.6:
-          move_to(prediction.category.value, confidence=prediction.confidence)
+          move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 ```
@@ -359,7 +342,7 @@ rules: |
   else:
       prediction = modules.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.55:
-          move_to(prediction.category.value, confidence=prediction.confidence)
+          move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 ```
@@ -395,15 +378,15 @@ rules: |
   sgd = modules.tfidf_sgd.classify(message, features, account)
 
   # Aggressive spam: either classifier with high confidence
-  if nb.category == Category.SPAM and nb.confidence >= 0.8:
+  if nb.category == "Spam" and nb.confidence >= 0.8:
       move_to("Spam", confidence=nb.confidence)
-  elif sgd.category == Category.SPAM and sgd.confidence >= 0.8:
+  elif sgd.category == "Spam" and sgd.confidence >= 0.8:
       move_to("Spam", confidence=sgd.confidence)
   # Conservative for other categories: require agreement
   elif nb.category and nb.category == sgd.category:
       avg_conf = (nb.confidence + sgd.confidence) / 2
       if avg_conf >= 0.6:
-          move_to(nb.category.value, confidence=avg_conf)
+          move_to(nb.category, confidence=avg_conf)
       else:
           skip()
   else:
@@ -425,7 +408,7 @@ rules: |
       features = modules.extract_features.classify(message)
       prediction = modules.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.55:
-          move_to(prediction.category.value, confidence=prediction.confidence)
+          move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 
@@ -455,7 +438,7 @@ rules: |
       features = modules.extract_features.classify(message)
       prediction = modules.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.6:
-          move_to(prediction.category.value, confidence=prediction.confidence)
+          move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 ```
@@ -477,7 +460,7 @@ rules: |
   else:
       prediction = modules.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.55:
-          move_to(prediction.category.value, confidence=prediction.confidence)
+          move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 ```
@@ -493,7 +476,7 @@ rules: |
 
   # Only move with high confidence
   if prediction.category and prediction.confidence >= 0.85:
-      move_to(prediction.category.value, confidence=prediction.confidence)
+      move_to(prediction.category, confidence=prediction.confidence)
   else:
       skip()  # Stay in inbox for manual review
 ```
@@ -516,7 +499,7 @@ rules: |
 
   # Use Naive Bayes for routing
   if nb.category and nb.confidence >= 0.6:
-      move_to(nb.category.value, confidence=nb.confidence)
+      move_to(nb.category, confidence=nb.confidence)
   else:
       skip()
 ```
@@ -548,7 +531,7 @@ rules: |
   features = modules.extract_features.classify(message)
   prediction = modules.naive_bayes.classify(message, features, account)
   if prediction.category and prediction.confidence >= 0.55:
-      move_to(prediction.category.value, confidence=prediction.confidence)
+      move_to(prediction.category, confidence=prediction.confidence)
   else:
       skip()
 ```
@@ -590,15 +573,15 @@ features = modules.extract_features.classify(message)
 prediction = modules.naive_bayes.classify(message, features, account)
 ```
 
-**Accessing `.value` on None:**
+**Skipping the category None check:**
 
 ```python
 # Wrong: category might be None
-move_to(prediction.category.value)
+move_to(prediction.category)
 
 # Right: check first
 if prediction.category:
-    move_to(prediction.category.value)
+    move_to(prediction.category)
 ```
 
 **Calling routing functions conditionally without a fallback:**
@@ -606,12 +589,12 @@ if prediction.category:
 ```python
 # Wrong: no decision made if confidence < 0.5
 if prediction.confidence >= 0.5:
-    move_to(prediction.category.value)
+    move_to(prediction.category)
 # Message goes to inbox silently
 
 # Better: explicit skip
 if prediction.category and prediction.confidence >= 0.5:
-    move_to(prediction.category.value)
+    move_to(prediction.category)
 else:
     skip()
 ```

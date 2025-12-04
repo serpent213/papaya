@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from papaya.classifiers.naive_bayes import NaiveBayesClassifier
-from papaya.types import Category, Features
+from papaya.types import Features
 
 
 def _sample_features(subject: str, body: str) -> Features:
@@ -28,16 +28,16 @@ def test_naive_bayes_trains_and_predicts(tmp_path: Path) -> None:
     ham = _sample_features("Project Update", "Agenda project meeting schedule discussion")
 
     for _ in range(20):
-        classifier.train(spam, Category.SPAM)
-        classifier.train(ham, Category.IMPORTANT)
+        classifier.train(spam, "Spam")
+        classifier.train(ham, "Important")
 
     assert classifier.is_trained() is True
 
     spam_prediction = classifier.predict(spam)
     ham_prediction = classifier.predict(ham)
 
-    assert spam_prediction.category == Category.SPAM
-    assert ham_prediction.category == Category.IMPORTANT
+    assert spam_prediction.category == "Spam"
+    assert ham_prediction.category == "Important"
     assert 0.0 <= spam_prediction.confidence <= 1.0
     assert 0.0 <= ham_prediction.confidence <= 1.0
 

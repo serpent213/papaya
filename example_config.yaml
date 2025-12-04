@@ -12,7 +12,7 @@ rules: |
       prediction = modules.naive_bayes.classify(message, features, account)
 
       if prediction.category and prediction.confidence >= 0.55:
-          move_to(prediction.category.value, confidence=prediction.confidence)
+          move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 
@@ -37,7 +37,7 @@ maildirs:
           prediction = modules.naive_bayes.classify(message, features, account)
 
           if prediction.category and prediction.confidence >= 0.55:
-              move_to(prediction.category.value, confidence=prediction.confidence)
+              move_to(prediction.category, confidence=prediction.confidence)
           else:
               skip()
     train: |

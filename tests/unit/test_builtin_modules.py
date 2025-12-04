@@ -9,7 +9,7 @@ from papaya.config import Config, LoggingConfig
 from papaya.modules import extract_features, naive_bayes, tfidf_sgd
 from papaya.modules.context import ModuleContext
 from papaya.store import Store
-from papaya.types import Category, CategoryConfig, Features, MaildirAccount
+from papaya.types import CategoryConfig, Features, MaildirAccount
 
 
 def _build_context(tmp_path: Path) -> ModuleContext:
@@ -68,9 +68,9 @@ def test_naive_bayes_module_trains_and_classifies(tmp_path):
     initial = naive_bayes.classify(message, features, account="primary")
     assert initial.category is None
 
-    naive_bayes.train(message, features, Category.SPAM, account="primary")
+    naive_bayes.train(message, features, "Spam", account="primary")
     after = naive_bayes.classify(message, features, account="primary")
-    assert after.category == Category.SPAM
+    assert after.category == "Spam"
 
     persisted = ctx.store.get("naive_bayes", account="primary")
     assert isinstance(persisted, NaiveBayesClassifier)
@@ -86,9 +86,9 @@ def test_tfidf_sgd_module_trains_and_classifies(tmp_path):
     message["From"] = "sender@example.com"
     features = _sample_features()
 
-    tfidf_sgd.train(message, features, Category.SPAM.value, account="primary")
+    tfidf_sgd.train(message, features, "Spam", account="primary")
     prediction = tfidf_sgd.classify(message, features, account="primary")
-    assert prediction.category == Category.SPAM
+    assert prediction.category == "Spam"
 
     persisted = ctx.store.get("tfidf_sgd", account="primary")
     assert isinstance(persisted, TfidfSgdClassifier)

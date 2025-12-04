@@ -39,7 +39,7 @@ if remembered:
 else:
     features = modules.extract_features.classify(message)
     bayes = modules.naive_bayes.classify(message, features, account)
-    if bayes.category and bayes.category.value == "Spam" and bayes.confidence >= 0.55:
+    if bayes.category and bayes.category == "Spam" and bayes.confidence >= 0.55:
         move_to("Spam", confidence=bayes.confidence)
     else:
         skip()
@@ -138,7 +138,7 @@ def test_learning_from_user_corrections(tmp_path: Path, corpus_dir: Path) -> Non
     config = _build_config(maildir, store.root_dir)
     loader = ModuleLoader([MODULES_PATH])
     loader.load_all()
-    loader.call_startup(ModuleContext(config=config, store=store, fresh_models=True))
+    loader.call_startup(ModuleContext(config=config, store=store, reset_state=True))
 
     rule_engine = RuleEngine(loader, store, CLASSIFY_RULES, TRAIN_RULES)
     trainer = RecordingTrainer(

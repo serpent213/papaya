@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from papaya.store import PredictionLogger, PredictionRecord, Store, TrainedIdRegistry
-from papaya.types import Category, Prediction
+from papaya.types import Prediction
 
 
 def test_set_and_get_roundtrip(tmp_path):
@@ -78,9 +78,9 @@ def test_trained_id_registry_tracks_categories(tmp_path):
 def test_log_predictions_writes_json_lines(tmp_path):
     store = Store(tmp_path / "state")
     prediction = Prediction(
-        category=Category.SPAM,
+        category="Spam",
         confidence=0.92,
-        scores={Category.SPAM: 0.92, Category.NEWSLETTERS: 0.05, Category.IMPORTANT: 0.03},
+        scores={"Spam": 0.92, "Newsletters": 0.05, "Important": 0.03},
     )
 
     store.log_predictions(
@@ -106,11 +106,7 @@ def test_log_predictions_writes_json_lines(tmp_path):
 
 def test_prediction_logging_can_be_disabled(tmp_path):
     store = Store(tmp_path / "state", write_predictions_logfile=False)
-    prediction = Prediction(
-        category=Category.SPAM,
-        confidence=0.5,
-        scores={Category.SPAM: 0.5},
-    )
+    prediction = Prediction(category="Spam", confidence=0.5, scores={"Spam": 0.5})
 
     store.log_predictions("personal", "<id-2>", {"nb": prediction})
 

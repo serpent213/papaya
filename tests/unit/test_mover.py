@@ -13,7 +13,6 @@ from papaya.maildir import (
     inbox_new_dir,
 )
 from papaya.mover import MailMover
-from papaya.types import Category
 
 
 def _write_message(path: Path) -> Path:
@@ -41,7 +40,7 @@ def test_move_to_category_creates_unique_paths(tmp_path):
     ensure_maildir_structure(maildir, ["Spam"])
     mover = MailMover(maildir, hostname="testhost")
 
-    first = mover.move_to_category(_write_message(inbox_new_dir(maildir) / "first"), Category.SPAM)
+    first = mover.move_to_category(_write_message(inbox_new_dir(maildir) / "first"), "Spam")
     second = mover.move_to_category(_write_message(inbox_new_dir(maildir) / "second"), "Spam")
 
     assert first.parent == category_subdir(maildir, "Spam", "cur")

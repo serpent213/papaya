@@ -22,7 +22,6 @@ from .maildir import (
     is_inbox_new,
     normalize_category_name,
 )
-from .types import Category
 
 LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ class MaildirWatcher:
     def __init__(
         self,
         maildir: Path,
-        categories: Iterable[str | Category],
+        categories: Iterable[str],
         *,
         debounce_seconds: float = 0.2,
         observer_factory: Callable[[], BaseObserver] | None = None,
@@ -126,7 +125,7 @@ class MaildirWatcher:
                     "User sort callback failed for path %s (category=%s)", path, category
                 )
 
-    def _normalize_categories(self, categories: Iterable[str | Category]) -> tuple[str, ...]:
+    def _normalize_categories(self, categories: Iterable[str]) -> tuple[str, ...]:
         normalized: list[str] = []
         seen: set[str] = set()
         for category in categories:
