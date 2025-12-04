@@ -148,7 +148,7 @@ Compiles and executes two types of rules:
 | `message` | `EmailMessage` | Parsed email |
 | `account` | `str` | Account name |
 | `category` | `str` | (train only) Destination category |
-| `modules` | `ModuleNamespace` | Access to loaded modules |
+| `mod` | `ModuleNamespace` | Access to loaded modules |
 | `move_to(cat, confidence)` | function | Declare move decision |
 | `skip()` | function | Keep in inbox |
 | `fallback()` | function | Chain to global rules |
@@ -156,12 +156,12 @@ Compiles and executes two types of rules:
 **Example classification rule:**
 
 ```python
-known_category = modules.match_from.classify(message, None, account)
+known_category = mod.match_from.classify(message, None, account)
 if known_category:
     move_to(known_category)
 else:
-    features = modules.extract_features.classify(message)
-    prediction = modules.naive_bayes.classify(message, features, account)
+    features = mod.extract_features.classify(message)
+    prediction = mod.naive_bayes.classify(message, features, account)
     if prediction.category and prediction.confidence >= 0.55:
         move_to(prediction.category, confidence=prediction.confidence)
     else:
@@ -364,22 +364,22 @@ maildirs:
       # Python snippet
 
 rules: |               # Global classification rules
-  known_category = modules.match_from.classify(message, None, account)
+  known_category = mod.match_from.classify(message, None, account)
   if known_category:
       move_to(known_category)
   else:
-      features = modules.extract_features.classify(message)
-      prediction = modules.naive_bayes.classify(message, features, account)
+      features = mod.extract_features.classify(message)
+      prediction = mod.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.55:
           move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 
 train: |               # Global training rules
-  features = modules.extract_features.classify(message)
-  modules.naive_bayes.train(message, features, category, account)
-  modules.tfidf_sgd.train(message, features, category, account)
-  modules.match_from.train(message, features, category, account)
+  features = mod.extract_features.classify(message)
+  mod.naive_bayes.train(message, features, category, account)
+  mod.tfidf_sgd.train(message, features, category, account)
+  mod.match_from.train(message, features, category, account)
 
 categories:
   Spam: {}

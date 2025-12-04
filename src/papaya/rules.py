@@ -166,7 +166,7 @@ class RuleEngine:
             {
                 "message": message,
                 "account": account,
-                "modules": ModuleNamespace(self._loader),
+                "mod": ModuleNamespace(self._loader),
                 "message_id": message_identifier,
                 "move_to": move_to,
                 "skip": skip,
@@ -203,7 +203,7 @@ class RuleEngine:
             "message": message,
             "account": account,
             "category": category,
-            "modules": ModuleNamespace(self._loader),
+            "mod": ModuleNamespace(self._loader),
             "log": log_d,
             "log_d": log_d,
             "log_i": log_i,

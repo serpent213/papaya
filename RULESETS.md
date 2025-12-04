@@ -41,8 +41,8 @@ Rules live in `~/.config/papaya/config.yaml` (or a path passed via `--config`). 
 ```yaml
 rules: |
   # Classification logic here
-  features = modules.extract_features.classify(message)
-  prediction = modules.naive_bayes.classify(message, features, account)
+  features = mod.extract_features.classify(message)
+  prediction = mod.naive_bayes.classify(message, features, account)
   if prediction.confidence >= 0.7:
       move_to(prediction.category, confidence=prediction.confidence)
   else:
@@ -50,8 +50,8 @@ rules: |
 
 train: |
   # Training logic here
-  features = modules.extract_features.classify(message)
-  modules.naive_bayes.train(message, features, category, account)
+  features = mod.extract_features.classify(message)
+  mod.naive_bayes.train(message, features, category, account)
 ```
 
 The `|` character preserves newlines. Indent the Python code consistently (spaces, not tabs).
@@ -69,7 +69,7 @@ Classification rules run once per incoming message. Your job: call one of the ro
 | `message` | `EmailMessage` | The parsed email; use `message.get("Header-Name")` to read headers |
 | `account` | `str` | The account name from config (e.g., `"personal"`) |
 | `message_id` | `str` | The Message-ID header (or a fallback identifier) |
-| `modules` | `ModuleNamespace` | Attribute-style access to loaded modules |
+| `mod` | `ModuleNamespace` | Attribute-style access to loaded modules |
 | `move_to(category, confidence=1.0)` | function | Route to a category folder |
 | `skip()` | function | Deliver to inbox (no routing) |
 | `fallback()` | function | Defer to global rules (from account rules only) |
@@ -125,14 +125,14 @@ Training rules run when you manually sort a message into a category folder. They
 | `message` | `EmailMessage` | The email being trained on |
 | `account` | `str` | Account name |
 | `category` | `str` | The destination category (folder name) |
-| `modules` | `ModuleNamespace` | Access to loaded modules |
+| `mod` | `ModuleNamespace` | Access to loaded modules |
 
 Training rules have no routing functions—there's nothing to route. Call module `.train()` methods to update models.
 
 ```python
-features = modules.extract_features.classify(message)
-modules.naive_bayes.train(message, features, category, account)
-modules.match_from.train(message, features, category, account)
+features = mod.extract_features.classify(message)
+mod.naive_bayes.train(message, features, category, account)
+mod.match_from.train(message, features, category, account)
 ```
 
 ### Training Guard
@@ -148,14 +148,14 @@ You don't need to handle these cases in your rules.
 
 ## Built-in Modules
 
-Modules expose `classify()` and/or `train()` hooks. Access them via `modules.<name>`.
+Modules expose `classify()` and/or `train()` hooks. Access them via `mod.<name>`.
 
 ### `extract_features`
 
 Stateless feature extraction. Call it first to get structured data for ML classifiers.
 
 ```python
-features = modules.extract_features.classify(message)
+features = mod.extract_features.classify(message)
 ```
 
 Returns a `Features` object (see [Data Types](#data-types)).
@@ -167,7 +167,7 @@ Remembers sender→category mappings. Lightning-fast lookups that bypass ML enti
 **Classification:**
 
 ```python
-known = modules.match_from.classify(message, None, account)
+known = mod.match_from.classify(message, None, account)
 if known:
     move_to(known)
 ```
@@ -177,7 +177,7 @@ Returns the category name as a string, or `None` if the sender is unknown.
 **Training:**
 
 ```python
-modules.match_from.train(message, features, category, account)
+mod.match_from.train(message, features, category, account)
 ```
 
 Associates the sender's email address with the category. If the sender was previously in a different category, they're moved.
@@ -189,7 +189,7 @@ Multinomial Naive Bayes classifier. Fast, interpretable, works well with small t
 **Classification:**
 
 ```python
-prediction = modules.naive_bayes.classify(message, features, account)
+prediction = mod.naive_bayes.classify(message, features, account)
 # prediction.category    → category name (str) or None
 # prediction.confidence  → float 0.0–1.0
 # prediction.scores      → dict mapping category name → score
@@ -198,7 +198,7 @@ prediction = modules.naive_bayes.classify(message, features, account)
 **Training:**
 
 ```python
-modules.naive_bayes.train(message, features, category, account)
+mod.naive_bayes.train(message, features, category, account)
 ```
 
 ### `tfidf_sgd`
@@ -208,7 +208,7 @@ TF-IDF vectorisation + SGD (Stochastic Gradient Descent) classifier. Often more 
 **Classification:**
 
 ```python
-prediction = modules.tfidf_sgd.classify(message, features, account)
+prediction = mod.tfidf_sgd.classify(message, features, account)
 ```
 
 Same return type as `naive_bayes`.
@@ -216,7 +216,7 @@ Same return type as `naive_bayes`.
 **Training:**
 
 ```python
-modules.tfidf_sgd.train(message, features, category, account)
+mod.tfidf_sgd.train(message, features, category, account)
 ```
 
 ### `ml`
@@ -224,7 +224,7 @@ modules.tfidf_sgd.train(message, features, category, account)
 Utility helpers for logging classifier predictions to `logs/predictions.log`. Use the curried logger to bind message metadata once per message and emit structured records for each classifier you run:
 
 ```python
-ml_log = modules.ml.logger(account=account, message_id=message_id, message=message)
+ml_log = mod.ml.logger(account=account, message_id=message_id, message=message)
 ml_log.p("naive_bayes", prediction)
 ml_log.p("tfidf_sgd", other_prediction)
 ```
@@ -282,8 +282,8 @@ maildirs:
           fallback()
     train: |
       # Work-specific training (or omit to use global)
-      features = modules.extract_features.classify(message)
-      modules.naive_bayes.train(message, features, category, account)
+      features = mod.extract_features.classify(message)
+      mod.naive_bayes.train(message, features, category, account)
 
   - name: personal
     path: /var/vmail/personal.example.com/alice
@@ -320,8 +320,8 @@ rules: |
           break
   else:
       # No VIP match; continue with ML
-      features = modules.extract_features.classify(message)
-      prediction = modules.naive_bayes.classify(message, features, account)
+      features = mod.extract_features.classify(message)
+      prediction = mod.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.6:
           move_to(prediction.category, confidence=prediction.confidence)
       else:
@@ -334,13 +334,13 @@ Many newsletters include a List-Unsubscribe header. Use it as a strong signal:
 
 ```yaml
 rules: |
-  features = modules.extract_features.classify(message)
+  features = mod.extract_features.classify(message)
 
   # List-Unsubscribe is a strong newsletter indicator
   if features.has_list_unsubscribe:
       move_to("Newsletters", confidence=0.9)
   else:
-      prediction = modules.naive_bayes.classify(message, features, account)
+      prediction = mod.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.55:
           move_to(prediction.category, confidence=prediction.confidence)
       else:
@@ -371,11 +371,11 @@ Use both classifiers and require consensus:
 
 ```yaml
 rules: |
-  features = modules.extract_features.classify(message)
+  features = mod.extract_features.classify(message)
 
   # Get predictions from both classifiers
-  nb = modules.naive_bayes.classify(message, features, account)
-  sgd = modules.tfidf_sgd.classify(message, features, account)
+  nb = mod.naive_bayes.classify(message, features, account)
+  sgd = mod.tfidf_sgd.classify(message, features, account)
 
   # Aggressive spam: either classifier with high confidence
   if nb.category == "Spam" and nb.confidence >= 0.8:
@@ -400,23 +400,23 @@ The most practical setup: trust known senders, use ML for unknowns:
 ```yaml
 rules: |
   # Fast path: sender we've seen before
-  known = modules.match_from.classify(message, None, account)
+  known = mod.match_from.classify(message, None, account)
   if known:
       move_to(known)
   else:
       # Slow path: ML classification
-      features = modules.extract_features.classify(message)
-      prediction = modules.naive_bayes.classify(message, features, account)
+      features = mod.extract_features.classify(message)
+      prediction = mod.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.55:
           move_to(prediction.category, confidence=prediction.confidence)
       else:
           skip()
 
 train: |
-  features = modules.extract_features.classify(message)
-  modules.naive_bayes.train(message, features, category, account)
-  modules.tfidf_sgd.train(message, features, category, account)
-  modules.match_from.train(message, features, category, account)
+  features = mod.extract_features.classify(message)
+  mod.naive_bayes.train(message, features, category, account)
+  mod.tfidf_sgd.train(message, features, category, account)
+  mod.match_from.train(message, features, category, account)
 ```
 
 ### 6. Subject-Based Rules
@@ -435,8 +435,8 @@ rules: |
       move_to("Newsletters")
   else:
       # Fall through to ML
-      features = modules.extract_features.classify(message)
-      prediction = modules.naive_bayes.classify(message, features, account)
+      features = mod.extract_features.classify(message)
+      prediction = mod.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.6:
           move_to(prediction.category, confidence=prediction.confidence)
       else:
@@ -449,7 +449,7 @@ Flag messages with excessive links as potential spam:
 
 ```yaml
 rules: |
-  features = modules.extract_features.classify(message)
+  features = mod.extract_features.classify(message)
 
   # Many links + no unsubscribe = suspicious
   if features.link_count > 10 and not features.has_list_unsubscribe:
@@ -458,7 +458,7 @@ rules: |
   elif features.domain_mismatch_score > 0.5:
       move_to("Spam", confidence=0.8)
   else:
-      prediction = modules.naive_bayes.classify(message, features, account)
+      prediction = mod.naive_bayes.classify(message, features, account)
       if prediction.category and prediction.confidence >= 0.55:
           move_to(prediction.category, confidence=prediction.confidence)
       else:
@@ -471,8 +471,8 @@ Only sort when very confident; keep uncertain mail in inbox:
 
 ```yaml
 rules: |
-  features = modules.extract_features.classify(message)
-  prediction = modules.naive_bayes.classify(message, features, account)
+  features = mod.extract_features.classify(message)
+  prediction = mod.naive_bayes.classify(message, features, account)
 
   # Only move with high confidence
   if prediction.category and prediction.confidence >= 0.85:
@@ -487,13 +487,13 @@ Track classifier performance for later analysis:
 
 ```yaml
 rules: |
-  features = modules.extract_features.classify(message)
+  features = mod.extract_features.classify(message)
 
-  nb = modules.naive_bayes.classify(message, features, account)
-  sgd = modules.tfidf_sgd.classify(message, features, account)
+  nb = mod.naive_bayes.classify(message, features, account)
+  sgd = mod.tfidf_sgd.classify(message, features, account)
 
   # Log both predictions
-  ml_log = modules.ml.logger(account=account, message_id=message_id, message=message)
+  ml_log = mod.ml.logger(account=account, message_id=message_id, message=message)
   ml_log.p("naive_bayes", nb)
   ml_log.p("tfidf_sgd", sgd)
 
@@ -528,8 +528,8 @@ rules: |
           pass
 
   # Default ML path
-  features = modules.extract_features.classify(message)
-  prediction = modules.naive_bayes.classify(message, features, account)
+  features = mod.extract_features.classify(message)
+  prediction = mod.naive_bayes.classify(message, features, account)
   if prediction.category and prediction.confidence >= 0.55:
       move_to(prediction.category, confidence=prediction.confidence)
   else:
@@ -566,11 +566,11 @@ The message is delivered to inbox as a fail-safe. Check `<root_dir>/logs/` for d
 
 ```python
 # Wrong: features not defined
-prediction = modules.naive_bayes.classify(message, features, account)
+prediction = mod.naive_bayes.classify(message, features, account)
 
 # Right: extract first
-features = modules.extract_features.classify(message)
-prediction = modules.naive_bayes.classify(message, features, account)
+features = mod.extract_features.classify(message)
+prediction = mod.naive_bayes.classify(message, features, account)
 ```
 
 **Skipping the category None check:**
@@ -688,14 +688,14 @@ log_i()        # INFO-level log helper
 ### Module Methods
 
 ```python
-modules.extract_features.classify(message) → Features
-modules.match_from.classify(message, None, account) → str | None
-modules.match_from.train(message, features, category, account)
-modules.naive_bayes.classify(message, features, account) → Prediction
-modules.naive_bayes.train(message, features, category, account)
-modules.tfidf_sgd.classify(message, features, account) → Prediction
-modules.tfidf_sgd.train(message, features, category, account)
-modules.ml.logger(account=account, message_id=message_id, message=message) → PredictionLogContext
+mod.extract_features.classify(message) → Features
+mod.match_from.classify(message, None, account) → str | None
+mod.match_from.train(message, features, category, account)
+mod.naive_bayes.classify(message, features, account) → Prediction
+mod.naive_bayes.train(message, features, category, account)
+mod.tfidf_sgd.classify(message, features, account) → Prediction
+mod.tfidf_sgd.train(message, features, category, account)
+mod.ml.logger(account=account, message_id=message_id, message=message) → PredictionLogContext
 PredictionLogContext.p(classifier, prediction)  # Append prediction log
 ```
 

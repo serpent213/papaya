@@ -27,9 +27,9 @@ from tests.integration.conftest import (
 )
 
 CLASSIFY_RULES = """
-ml_logger = modules.ml.logger(account=account, message_id=message_id, message=message)
-features = modules.extract_features.classify(message)
-prediction = modules.tfidf_sgd.classify(message, features, account)
+ml_logger = mod.ml.logger(account=account, message_id=message_id, message=message)
+features = mod.extract_features.classify(message)
+prediction = mod.tfidf_sgd.classify(message, features, account)
 ml_logger.p("tfidf_sgd", prediction)
 if prediction.category and prediction.confidence >= 0.4:
     move_to(prediction.category, confidence=prediction.confidence)
@@ -38,8 +38,8 @@ else:
 """
 
 TRAIN_RULES = """
-features = modules.extract_features.classify(message)
-modules.tfidf_sgd.train(message, features, category, account)
+features = mod.extract_features.classify(message)
+mod.tfidf_sgd.train(message, features, category, account)
 """
 
 MODULES_PATH = Path(__file__).resolve().parents[2] / "src" / "papaya" / "modules"

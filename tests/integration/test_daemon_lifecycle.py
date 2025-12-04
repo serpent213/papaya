@@ -27,8 +27,8 @@ from tests.integration.conftest import (
 )
 
 CLASSIFY_RULES = """
-features = modules.extract_features.classify(message)
-bayes = modules.naive_bayes.classify(message, features, account)
+features = mod.extract_features.classify(message)
+bayes = mod.naive_bayes.classify(message, features, account)
 if bayes.category and bayes.category == "Spam" and bayes.confidence >= 0.55:
     move_to("Spam", confidence=bayes.confidence)
 else:
@@ -36,8 +36,8 @@ else:
 """
 
 TRAIN_RULES = """
-features = modules.extract_features.classify(message)
-modules.naive_bayes.train(message, features, category, account)
+features = mod.extract_features.classify(message)
+mod.naive_bayes.train(message, features, category, account)
 """
 
 MODULES_PATH = Path(__file__).resolve().parents[2] / "src" / "papaya" / "modules"

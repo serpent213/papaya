@@ -4,12 +4,12 @@
 root_dir: ~/.local/lib/papaya
 
 rules: |
-  known_category = modules.match_from.classify(message, None, account)
+  known_category = mod.match_from.classify(message, None, account)
   if known_category:
       move_to(known_category)
   else:
-      features = modules.extract_features.classify(message)
-      prediction = modules.naive_bayes.classify(message, features, account)
+      features = mod.extract_features.classify(message)
+      prediction = mod.naive_bayes.classify(message, features, account)
 
       if prediction.category and prediction.confidence >= 0.55:
           move_to(prediction.category, confidence=prediction.confidence)
@@ -17,10 +17,10 @@ rules: |
           skip()
 
 train: |
-  features = modules.extract_features.classify(message)
-  modules.naive_bayes.train(message, features, category, account)
-  modules.tfidf_sgd.train(message, features, category, account)
-  modules.match_from.train(message, features, category, account)
+  features = mod.extract_features.classify(message)
+  mod.naive_bayes.train(message, features, category, account)
+  mod.tfidf_sgd.train(message, features, category, account)
+  mod.match_from.train(message, features, category, account)
 
 module_paths:
   - ~/.config/papaya/modules
@@ -29,22 +29,22 @@ maildirs:
   - name: personal
     path: /var/vmail/example.com/personal
     rules: |
-      known_category = modules.match_from.classify(message, None, account)
+      known_category = mod.match_from.classify(message, None, account)
       if known_category:
           move_to(known_category)
       else:
-          features = modules.extract_features.classify(message)
-          prediction = modules.naive_bayes.classify(message, features, account)
+          features = mod.extract_features.classify(message)
+          prediction = mod.naive_bayes.classify(message, features, account)
 
           if prediction.category and prediction.confidence >= 0.55:
               move_to(prediction.category, confidence=prediction.confidence)
           else:
               skip()
     train: |
-      features = modules.extract_features.classify(message)
-      modules.naive_bayes.train(message, features, category, account)
-      modules.tfidf_sgd.train(message, features, category, account)
-      modules.match_from.train(message, features, category, account)
+      features = mod.extract_features.classify(message)
+      mod.naive_bayes.train(message, features, category, account)
+      mod.tfidf_sgd.train(message, features, category, account)
+      mod.match_from.train(message, features, category, account)
 
 categories:
   Spam: {}

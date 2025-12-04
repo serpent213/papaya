@@ -87,10 +87,10 @@ def test_execute_train_uses_account_specific_rules() -> None:
         loader,
         FakeStore(),
         "pass",
-        "modules.tracker.calls.append(('global', account, category))",
+        "mod.tracker.calls.append(('global', account, category))",
     )
     engine.set_account_rules(
-        "personal", None, "modules.tracker.calls.append(('account', account, category))"
+        "personal", None, "mod.tracker.calls.append(('account', account, category))"
     )
 
     engine.execute_train("personal", _message(), "Spam")
@@ -105,7 +105,7 @@ def test_execute_train_falls_back_to_global_rules() -> None:
         loader,
         FakeStore(),
         "pass",
-        "modules.tracker.calls.append(('global', account, category))",
+        "mod.tracker.calls.append(('global', account, category))",
     )
 
     engine.execute_train("personal", _message(), "Spam")
