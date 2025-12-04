@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from email.message import EmailMessage
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -43,7 +43,14 @@ def reset_ml_module() -> None:
 
 
 def _startup(store: FakeStore) -> None:
-    ctx = ModuleContext(config=SimpleNamespace(), store=store)
+    def _missing_module(name: str) -> ModuleType:
+        raise KeyError(f"Module '{name}' not available")
+
+    ctx = ModuleContext(
+        config=SimpleNamespace(),
+        store=store,
+        get_module=_missing_module,
+    )
     ml.startup(ctx)
 
 

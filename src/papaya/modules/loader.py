@@ -2,18 +2,32 @@
 
 from __future__ import annotations
 
+import heapq
 import importlib.util
 import logging
 import sys
+from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from papaya.modules.context import ModuleContext
 
 LOGGER = logging.getLogger(__name__)
 _MODULE_PREFIX = "papaya.dynamic_modules"
+F = TypeVar("F", bound=Callable[..., object])
+
+
+def depends_on(*module_names: str) -> Callable[[F], F]:
+    """Declare dependencies that must be initialised before a module."""
+
+    def decorator(func: F) -> F:
+        func._depends_on = list(module_names)  # type: ignore[attr-defined]
+        return func
+
+    return decorator
 
 
 class ModuleLoader:
@@ -51,6 +65,9 @@ class ModuleLoader:
             self._load_order.append(name)
             LOGGER.debug("Loaded module '%s' from %s", name, location)
 
+        dependencies = self._extract_dependencies()
+        self._load_order = self._topological_sort(dependencies, self._load_order)
+
     def reload_all(self) -> None:
         """Hot-reload all previously discovered modules."""
         self._remove_from_sys_modules()
@@ -67,6 +84,9 @@ class ModuleLoader:
 
     def call_startup(self, ctx: ModuleContext) -> None:
         """Invoke startup() on modules that define it, in load order."""
+        ctx_with_modules = ctx
+        if ctx.get_module is not self.get:
+            ctx_with_modules = replace(ctx, get_module=self.get)
         for name in self._load_order:
             module = self._modules[name]
             hook = getattr(module, "startup", None)
@@ -74,7 +94,7 @@ class ModuleLoader:
                 continue
             LOGGER.debug("Calling startup() on module '%s'", name)
             try:
-                hook(ctx)
+                hook(ctx_with_modules)
             except Exception:  # pragma: no cover - propagate after logging
                 LOGGER.exception("Module '%s' startup() failed", name)
                 raise
@@ -133,5 +153,49 @@ class ModuleLoader:
         spec.loader.exec_module(module)
         return module
 
+    def _extract_dependencies(self) -> dict[str, list[str]]:
+        dependencies: dict[str, list[str]] = {}
+        for name, module in self._modules.items():
+            startup_fn = getattr(module, "startup", None)
+            declared = []
+            if callable(startup_fn) and hasattr(startup_fn, "_depends_on"):
+                declared = list(startup_fn._depends_on)
+            dependencies[name] = declared
+        return dependencies
 
-__all__ = ["ModuleLoader"]
+    def _topological_sort(
+        self,
+        deps: dict[str, list[str]],
+        discovery_order: list[str],
+    ) -> list[str]:
+        order_index = {name: idx for idx, name in enumerate(discovery_order)}
+        adjacency: dict[str, list[str]] = {name: [] for name in deps}
+        indegree: dict[str, int] = {name: 0 for name in deps}
+
+        for name, requirements in deps.items():
+            for dependency in requirements:
+                if dependency not in deps:
+                    raise ValueError(f"Module '{name}' depends on unknown module '{dependency}'")
+                adjacency[dependency].append(name)
+                indegree[name] += 1
+
+        heap: list[tuple[int, str]] = []
+        for name, degree in indegree.items():
+            if degree == 0:
+                heapq.heappush(heap, (order_index.get(name, len(order_index)), name))
+
+        ordered: list[str] = []
+        while heap:
+            _, current = heapq.heappop(heap)
+            ordered.append(current)
+            for follower in adjacency[current]:
+                indegree[follower] -= 1
+                if indegree[follower] == 0:
+                    heapq.heappush(heap, (order_index.get(follower, len(order_index)), follower))
+
+        if len(ordered) != len(deps):
+            raise ValueError("Detected cycle in module dependencies")
+        return ordered
+
+
+__all__ = ["ModuleLoader", "depends_on"]

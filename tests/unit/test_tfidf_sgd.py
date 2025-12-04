@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from papaya.classifiers.tfidf_sgd import TfidfSgdClassifier
+from papaya.modules.tfidf_sgd import TfidfSgdClassifier
 from papaya.types import Features
 
 

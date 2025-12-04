@@ -134,7 +134,13 @@ def test_daemon_lifecycle(tmp_path: Path, corpus_dir: Path) -> None:
     def _initialise_loader(*, reset_state: bool) -> ModuleLoader:
         loader = ModuleLoader([MODULES_PATH])
         loader.load_all()
-        loader.call_startup(ModuleContext(config=config, store=store, reset_state=reset_state))
+        context = ModuleContext(
+            config=config,
+            store=store,
+            get_module=loader.get,
+            reset_state=reset_state,
+        )
+        loader.call_startup(context)
         loaders.append(loader)
         return loader
 

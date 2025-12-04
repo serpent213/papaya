@@ -99,7 +99,13 @@ def test_train_then_classify_pipeline(tmp_path: Path, corpus_dir: Path) -> None:
     config = _build_config(maildir, store.root_dir)
     loader = ModuleLoader([MODULES_PATH])
     loader.load_all()
-    loader.call_startup(ModuleContext(config=config, store=store, reset_state=True))
+    context = ModuleContext(
+        config=config,
+        store=store,
+        get_module=loader.get,
+        reset_state=True,
+    )
+    loader.call_startup(context)
 
     rule_engine = RuleEngine(loader, store, CLASSIFY_RULES, TRAIN_RULES)
     trainer = Trainer(

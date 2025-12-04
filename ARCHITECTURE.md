@@ -63,21 +63,18 @@ src/papaya/
 ├── types.py              # Core data structures
 ├── watcher.py            # Watchdog filesystem monitoring
 │
-├── classifiers/          # ML implementations
-│   ├── base.py           # Classifier protocol
-│   ├── naive_bayes.py    # Multinomial Naive Bayes
-│   ├── tfidf_sgd.py      # TF-IDF + SGDClassifier
-│   └── vectorizer.py     # Text vectorisation
-│
 ├── extractor/            # Feature extraction
 │   ├── features.py       # Main extraction logic
 │   ├── html.py           # HTML analysis (links, images, forms)
 │   └── domain.py         # Domain mismatch scoring
 │
-└── modules/              # Hot-reloadable module system
-    ├── loader.py         # ModuleLoader
-    ├── context.py        # ModuleContext
+└── modules/              # Hot-reloadable module system + built-ins
+    ├── loader.py         # Module discovery + dependency management
+    ├── context.py        # ModuleContext passed to hooks
+    ├── vectorizer.py     # Shared feature vectorisation module
     ├── extract_features.py
+    ├── match_from.py
+    ├── ml.py
     ├── naive_bayes.py
     └── tfidf_sgd.py
 ```
@@ -100,7 +97,7 @@ The module system replaces the old classifier registry with a flexible, hot-relo
 ```python
 loader = ModuleLoader([builtin_path, user_path])
 loader.load_all()
-loader.call_startup(ModuleContext(config, store))
+loader.call_startup(ModuleContext(config, store, loader.get))
 module = loader.get("naive_bayes")
 loader.reload_all()  # SIGHUP
 loader.call_cleanup()

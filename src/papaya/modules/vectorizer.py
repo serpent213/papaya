@@ -1,4 +1,4 @@
-"""Utilities for encoding Features instances into ML-friendly vectors."""
+"""Feature vectorization module."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ import numpy as np
 from scipy import sparse
 from sklearn.feature_extraction.text import HashingVectorizer
 
-from ..types import Features
+from papaya.modules.context import ModuleContext
+from papaya.types import Features
 
 NUMERIC_FEATURE_DIM = 8
 DEFAULT_TEXT_DIM = 2**14
@@ -73,51 +74,6 @@ class FeatureVectoriser:
         return "\n".join(part for part in tokens if part)
 
 
-class OnlineTfidfTransformer:
-    """Streaming TF-IDF approximation compatible with hashing features."""
-
-    def __init__(self, text_dimension: int) -> None:
-        self._dimension = text_dimension
-        self._document_count = 0
-        self._document_frequency = np.zeros(text_dimension, dtype=np.float64)
-
-    @property
-    def dimension(self) -> int:
-        return self._dimension
-
-    def transform(self, text_vector: sparse.csr_matrix) -> sparse.csr_matrix:
-        """Return a TF-IDF weighted copy of the provided vector."""
-
-        self._ensure_shape(text_vector)
-        result = text_vector.copy()
-        if result.nnz == 0 or self._document_count == 0:
-            return result
-
-        indices = result.indices
-        df = self._document_frequency[indices]
-        idf = np.log((1.0 + self._document_count) / (1.0 + df)) + 1.0
-        result.data = result.data * idf
-        norm = math.sqrt(float(result.data.dot(result.data)))
-        if norm > 0:
-            result.data = result.data / norm
-        return result
-
-    def observe(self, text_vector: sparse.csr_matrix) -> None:
-        """Update internal statistics with a new raw text vector."""
-
-        self._ensure_shape(text_vector)
-        if text_vector.nnz:
-            unique_indices = np.unique(text_vector.indices)
-            self._document_frequency[unique_indices] += 1
-        self._document_count += 1
-
-    def _ensure_shape(self, text_vector: sparse.csr_matrix) -> None:
-        if text_vector.shape[1] != self._dimension:
-            raise ValueError(
-                f"Expected vector with {self._dimension} columns, got {text_vector.shape[1]}"
-            )
-
-
 def _numeric_features(features: Features) -> list[float]:
     return [
         math.log1p(features.link_count),
@@ -131,10 +87,34 @@ def _numeric_features(features: Features) -> list[float]:
     ]
 
 
+_VECTORISER: FeatureVectoriser | None = None
+
+
+def startup(_ctx: ModuleContext) -> None:
+    """Initialise the shared feature vectoriser."""
+    global _VECTORISER
+    _VECTORISER = FeatureVectoriser()
+
+
+def cleanup() -> None:
+    """Reset the shared vectoriser."""
+    global _VECTORISER
+    _VECTORISER = None
+
+
+def get_vectoriser() -> FeatureVectoriser:
+    """Return the shared FeatureVectoriser instance."""
+    if _VECTORISER is None:
+        raise RuntimeError("vectorizer module not initialized")
+    return _VECTORISER
+
+
 __all__ = [
-    "EncodedFeatures",
+    "startup",
+    "cleanup",
+    "get_vectoriser",
     "FeatureVectoriser",
-    "NUMERIC_FEATURE_DIM",
+    "EncodedFeatures",
     "DEFAULT_TEXT_DIM",
-    "OnlineTfidfTransformer",
+    "NUMERIC_FEATURE_DIM",
 ]

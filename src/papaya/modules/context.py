@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,6 +18,7 @@ class ModuleContext:
 
     config: Config
     store: Store
+    get_module: Callable[[str], ModuleType]
     reset_state: bool = False
 
 

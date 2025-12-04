@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from email.message import EmailMessage
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -111,7 +112,16 @@ def _build_context(
         train="pass",
     )
     store = Store(config.root_dir)
-    context = ModuleContext(config=config, store=store, reset_state=fresh)
+
+    def _missing_module(name: str) -> ModuleType:
+        raise KeyError(f"Module '{name}' not registered")
+
+    context = ModuleContext(
+        config=config,
+        store=store,
+        get_module=_missing_module,
+        reset_state=fresh,
+    )
     return context, store, account
 
 

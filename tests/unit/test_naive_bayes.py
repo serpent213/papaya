@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from papaya.classifiers.naive_bayes import NaiveBayesClassifier
+from papaya.modules.naive_bayes import NaiveBayesClassifier
 from papaya.types import Features
 
 

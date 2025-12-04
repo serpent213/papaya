@@ -450,7 +450,12 @@ def _initialise_rule_engine(
 ) -> tuple[ModuleLoader, RuleEngine]:
     loader = ModuleLoader(_module_search_paths(config))
     loader.load_all()
-    context = ModuleContext(config=config, store=store, reset_state=reset_state)
+    context = ModuleContext(
+        config=config,
+        store=store,
+        get_module=loader.get,
+        reset_state=reset_state,
+    )
     loader.call_startup(context)
     engine = RuleEngine(loader, store, config.rules, config.train)
     for account in config.maildirs:

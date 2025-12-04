@@ -3,11 +3,11 @@ from __future__ import annotations
 from email.message import EmailMessage
 from pathlib import Path
 
-from papaya.classifiers.naive_bayes import NaiveBayesClassifier
-from papaya.classifiers.tfidf_sgd import TfidfSgdClassifier
 from papaya.config import Config, LoggingConfig
-from papaya.modules import extract_features, naive_bayes, tfidf_sgd
+from papaya.modules import extract_features, naive_bayes, tfidf_sgd, vectorizer
 from papaya.modules.context import ModuleContext
+from papaya.modules.naive_bayes import NaiveBayesClassifier
+from papaya.modules.tfidf_sgd import TfidfSgdClassifier
 from papaya.store import Store
 from papaya.types import CategoryConfig, Features, MaildirAccount
 
@@ -24,7 +24,20 @@ def _build_context(tmp_path: Path) -> ModuleContext:
         train="pass",
     )
     store = Store(config.root_dir)
-    return ModuleContext(config=config, store=store)
+    modules_lookup = {
+        "extract_features": extract_features,
+        "naive_bayes": naive_bayes,
+        "tfidf_sgd": tfidf_sgd,
+        "vectorizer": vectorizer,
+    }
+
+    def _get_module(name: str):
+        try:
+            return modules_lookup[name]
+        except KeyError as exc:  # pragma: no cover - defensive guard
+            raise KeyError(f"Unknown module '{name}'") from exc
+
+    return ModuleContext(config=config, store=store, get_module=_get_module)
 
 
 def _sample_features() -> Features:
@@ -59,6 +72,7 @@ def test_extract_features_module_returns_features(tmp_path):
 
 def test_naive_bayes_module_trains_and_classifies(tmp_path):
     ctx = _build_context(tmp_path)
+    vectorizer.startup(ctx)
     naive_bayes.startup(ctx)
 
     message = EmailMessage()
@@ -76,10 +90,12 @@ def test_naive_bayes_module_trains_and_classifies(tmp_path):
     assert isinstance(persisted, NaiveBayesClassifier)
 
     naive_bayes.cleanup()
+    vectorizer.cleanup()
 
 
 def test_tfidf_sgd_module_trains_and_classifies(tmp_path):
     ctx = _build_context(tmp_path)
+    vectorizer.startup(ctx)
     tfidf_sgd.startup(ctx)
 
     message = EmailMessage()
@@ -94,3 +110,4 @@ def test_tfidf_sgd_module_trains_and_classifies(tmp_path):
     assert isinstance(persisted, TfidfSgdClassifier)
 
     tfidf_sgd.cleanup()
+    vectorizer.cleanup()

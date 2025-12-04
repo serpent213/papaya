@@ -92,6 +92,7 @@ def cleanup():
     ctx = ModuleContext(
         config=SimpleNamespace(maildirs=[]),  # type: ignore[arg-type]
         store=DummyStore(),  # type: ignore[arg-type]
+        get_module=module_loader.get,
     )
 
     module_loader.call_startup(ctx)
