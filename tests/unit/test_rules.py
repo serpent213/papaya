@@ -156,28 +156,6 @@ def test_log_is_alias_for_log_d(caplog: pytest.LogCaptureFixture) -> None:
     assert "[rules:personal] alias works" in caplog.text
 
 
-def test_log_p_writes_predictions() -> None:
-    loader = FakeLoader()
-    store = FakeStore()
-    rules = (
-        "prediction = type('Pred', (), {'category': 'Spam', 'confidence': 0.8, "
-        "'scores': {'Spam': 0.8}})()\n"
-        "log_p('naive_bayes', prediction)\n"
-    )
-    engine = RuleEngine(loader, store, rules, "pass")
-
-    engine.execute_classify("personal", _message(), message_id="<msg-1>")
-
-    assert len(store.logs) == 1
-    args, kwargs = store.logs[0]
-    assert args[0] == "personal"
-    assert args[1] == "<msg-1>"
-    assert "naive_bayes" in args[2]
-    assert kwargs["recipient"] == "personal"
-    assert kwargs["from_address"] == "sender@example.com"
-    assert kwargs["subject"] == "hi"
-
-
 def test_log_functions_in_train_namespace(caplog: pytest.LogCaptureFixture) -> None:
     loader = FakeLoader()
     engine = RuleEngine(

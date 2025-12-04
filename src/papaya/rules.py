@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
     from papaya.modules.loader import ModuleLoader
     from papaya.store import Store
-    from papaya.types import Prediction
 
 LOGGER = logging.getLogger(__name__)
 
@@ -134,8 +133,8 @@ class RuleEngine:
     ) -> dict[str, Any]:
         namespace: dict[str, Any] = {}
         message_identifier = message_id or _header_value(message, "Message-ID") or "<missing>"
-        from_address = _header_value(message, "From")
-        subject = _header_value(message, "Subject", strip=False)
+        _header_value(message, "From")
+        _header_value(message, "Subject", strip=False)
 
         def _format_args(*args: object) -> str:
             return " ".join(str(arg) for arg in args)
@@ -163,25 +162,6 @@ class RuleEngine:
                 return
             LOGGER.info("[rules:%s] %s", account, _format_args(*args))
 
-        def log_p(classifier: str, prediction: Prediction) -> None:
-            if not classifier or prediction is None:
-                return
-            try:
-                self._store.log_predictions(
-                    account,
-                    message_identifier,
-                    {classifier: prediction},
-                    recipient=account,
-                    from_address=from_address,
-                    subject=subject,
-                )
-            except Exception:  # pragma: no cover - logging should not break classification
-                LOGGER.exception(
-                    "Failed to log prediction for '%s' (account=%s)",
-                    classifier,
-                    account,
-                )
-
         namespace.update(
             {
                 "message": message,
@@ -194,7 +174,6 @@ class RuleEngine:
                 "log": log_d,
                 "log_d": log_d,
                 "log_i": log_i,
-                "log_p": log_p,
                 "_decision": None,
                 "__builtins__": __builtins__,
             }

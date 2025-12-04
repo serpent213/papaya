@@ -75,7 +75,6 @@ Classification rules run once per incoming message. Your job: call one of the ro
 | `fallback()` | function | Defer to global rules (from account rules only) |
 | `log(*args)` / `log_d(*args)` | function | DEBUG-level log helper (alias) |
 | `log_i(*args)` | function | INFO-level log helper |
-| `log_p(classifier, prediction)` | function | Structured prediction log written to `logs/predictions.log` |
 
 ### Routing Functions
 
@@ -219,6 +218,18 @@ Same return type as `naive_bayes`.
 ```python
 modules.tfidf_sgd.train(message, features, category, account)
 ```
+
+### `ml`
+
+Utility helpers for logging classifier predictions to `logs/predictions.log`. Use the curried logger to bind message metadata once per message and emit structured records for each classifier you run:
+
+```python
+ml_log = modules.ml.logger(account=account, message_id=message_id, message=message)
+ml_log.p("naive_bayes", prediction)
+ml_log.p("tfidf_sgd", other_prediction)
+```
+
+Calling `.p()` with an empty classifier, `None` prediction, or when the daemon disabled logging is a no-op, so it is safe to sprinkle throughout your rules.
 
 ---
 
@@ -499,8 +510,9 @@ rules: |
   sgd = modules.tfidf_sgd.classify(message, features, account)
 
   # Log both predictions
-  log_p("naive_bayes", nb)
-  log_p("tfidf_sgd", sgd)
+  ml_log = modules.ml.logger(account=account, message_id=message_id, message=message)
+  ml_log.p("naive_bayes", nb)
+  ml_log.p("tfidf_sgd", sgd)
 
   # Use Naive Bayes for routing
   if nb.category and nb.confidence >= 0.6:
@@ -677,7 +689,6 @@ skip()                              # Keep in inbox
 fallback()                          # Defer to global rules
 log()/log_d()                       # DEBUG-level log helper
 log_i()                             # INFO-level log helper
-log_p(classifier, prediction)       # Structured prediction log
 ```
 
 ### Training Namespace
@@ -701,6 +712,8 @@ modules.naive_bayes.classify(message, features, account) → Prediction
 modules.naive_bayes.train(message, features, category, account)
 modules.tfidf_sgd.classify(message, features, account) → Prediction
 modules.tfidf_sgd.train(message, features, category, account)
+modules.ml.logger(account=account, message_id=message_id, message=message) → PredictionLogContext
+PredictionLogContext.p(classifier, prediction)  # Append prediction log
 ```
 
 ---
